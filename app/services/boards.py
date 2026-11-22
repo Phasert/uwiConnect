@@ -20,20 +20,10 @@ def _now() -> str:
 
 def browse_published(*, kind: str | None = None) -> list[dict[str, Any]]:
     with Session(engine) as session:
-        # DEFECT: returns pending too when kind filter omitted path uses OR wrongly
+        stmt = select(Listing).where(Listing.status == "published")
         if kind:
-            stmt = (
-                select(Listing)
-                .where(Listing.kind == kind)
-                .where(Listing.status.in_(["published", "pending"]))
-                .order_by(Listing.id.desc())
-            )
-        else:
-            stmt = (
-                select(Listing)
-                .where(Listing.status == "published")
-                .order_by(Listing.id.desc())
-            )
+            stmt = stmt.where(Listing.kind == kind)
+        stmt = stmt.order_by(Listing.id.desc())
         return [r.model_dump() for r in session.exec(stmt).all()]
 
 
@@ -49,8 +39,7 @@ def submit_listing(
     if kind not in {"job", "event"}:
         return {"ok": False, "error": "kind must be job|event"}
 
-    # DEFECT: jobs go pending; events are published immediately
-    status = "pending" if kind == "job" else "published"
+    status = "pending"
     with Session(engine) as session:
         listing = Listing(
             author_id=author_id,
@@ -64,18 +53,7 @@ def submit_listing(
         session.commit()
         session.refresh(listing)
         row = listing.model_dump()
-        listing_id = listing.id
 
-    if status == "published":
-        # Uses observer bus for events that auto-publish
-        notifications.notify(
-            {
-                "event_type": "listing.published",
-                "listing_id": listing_id,
-                "kind": kind,
-                "message": f"New {kind} on the board: {title}",
-            }
-        )
     return {"ok": True, "listing": row}
 
 
