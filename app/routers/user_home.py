@@ -2,7 +2,6 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 
 from app.dependencies.auth import AlumniDep, AuthDep
-from app.dependencies.session import SessionDep
 from app.services import boards
 
 from . import router, templates
@@ -12,14 +11,18 @@ from . import router, templates
 async def user_home_view(
     request: Request,
     user: AuthDep,
-    db:SessionDep
+    q: str | None = None,
+    kind: str | None = None,
 ):
     return templates.TemplateResponse(
-        request=request, 
+        request=request,
         name="app.html",
         context={
-            "user": user
-        }
+            "user": user,
+            "listings": boards.browse_published(kind=kind, q=q),
+            "q": q or "",
+            "kind": kind or "",
+        },
     )
 
 
