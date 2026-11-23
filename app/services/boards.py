@@ -57,6 +57,16 @@ def submit_listing(
     return {"ok": True, "listing": row}
 
 
+def list_by_author(author_id: int) -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        stmt = (
+            select(Listing)
+            .where(Listing.author_id == author_id)
+            .order_by(Listing.id.desc())
+        )
+        return [r.model_dump() for r in session.exec(stmt).all()]
+
+
 def list_pending() -> list[dict[str, Any]]:
     with Session(engine) as session:
         rows = session.exec(

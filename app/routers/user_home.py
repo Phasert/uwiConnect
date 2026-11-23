@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import status
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+
+from app.dependencies.auth import AlumniDep, AuthDep
 from app.dependencies.session import SessionDep
-from app.dependencies.auth import AuthDep, IsUserLoggedIn, get_current_user, is_admin
+from app.services import boards
+
 from . import router, templates
 
 
@@ -18,4 +20,19 @@ async def user_home_view(
         context={
             "user": user
         }
+    )
+
+
+@router.get("/app/dashboard", response_class=HTMLResponse)
+async def user_dashboard_view(
+    request: Request,
+    user: AlumniDep,
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="alumni_dashboard.html",
+        context={
+            "user": user,
+            "listings": boards.list_by_author(user.id),
+        },
     )

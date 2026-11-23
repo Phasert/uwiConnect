@@ -1,0 +1,48 @@
+{% extends "authenticated-base.html" %}
+{% block title %}My submissions · UWI Connect{% endblock %}
+
+{% block subpage_content %}
+<h1>My submissions</h1>
+<p>Track the job and event listings you submitted and their current review status.</p>
+
+{% if listings %}
+<div class="table-responsive">
+  <table class="table table-striped align-middle">
+    <thead>
+      <tr>
+        <th scope="col">Type</th>
+        <th scope="col">Title</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for listing in listings %}
+      <tr>
+        <td>{{ listing.kind | capitalize }}</td>
+        <td>{{ listing.title }}</td>
+        <td>
+          {% if listing.status == 'published' %}
+          <span class="badge bg-success">Published</span>
+          {% elif listing.status == 'pending' %}
+          <span class="badge bg-warning text-dark">Pending</span>
+          {% elif listing.status == 'rejected' %}
+          <span class="badge bg-danger">Rejected</span>
+          {% else %}
+          <span class="badge bg-secondary">{{ listing.status | capitalize }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info" role="status">
+  You have not submitted any listings yet.
+</div>
+{% endif %}
+
+<div class="app-actions">
+  <a href="{{ url_for('user_home_view') }}">Back to alumni boards</a>
+</div>
+{% endblock %}
