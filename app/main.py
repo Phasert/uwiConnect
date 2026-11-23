@@ -9,6 +9,7 @@ from starlette.responses import RedirectResponse
 
 from app.config import get_settings
 from app.routers import api_router, router, static_files, templates
+from app.services.website_notifications import register_website_observer
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     from app.seed import seed
 
-    # First boot on Render often races the free Postgres instance.
+    register_website_observer()
     seed(reset=False)
     yield
 
@@ -41,14 +42,13 @@ async def recover_uninitialized_db(request: Request, call_next):
 
     try:
         return await call_next(request)
-    except Exception as exc:  # noqa: BLE001 — catch then re-raise if not DB init
+    except Exception as exc:
         if not recover_if_uninitialized(exc):
             raise
         logger.info("Retrying %s after database init", request.url.path)
         try:
             return await call_next(request)
         except Exception:
-            # Schema exists now but the prior response may still need a refresh.
             if request.method.upper() == "GET":
                 return RedirectResponse(url=str(request.url), status_code=303)
             raise
