@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import importlib
+from contextlib import suppress
+
 from sqlmodel import Session, select
 
-from app.database import drop_all, ensure_db_and_tables, engine
+from app.database import drop_all, engine, ensure_db_and_tables
 from app.models.listing import Listing
 from app.models.user import User
 from app.services import notifications
 from app.utilities.security import encrypt_password
 
 USERS = [
-    # email, password, role, email_verified, display_name
     ("admin@uwi.edu", "admin-dev", "admin", 1, "Alumni Admin"),
     ("alumni.verified@my.uwi.edu", "alumni-dev", "alumni", 1, "Verified Alum"),
     ("alumni.pending@gmail.com", "alumni-dev", "alumni", 0, "Unverified Alum"),
@@ -20,16 +22,13 @@ USERS = [
 
 
 def seed(*, reset: bool = False) -> None:
-    import app.models  # noqa: F401
+    importlib.import_module("app.models")
 
     if reset:
-        try:
+        with suppress(Exception):
             drop_all()
-        except Exception:
-            pass
         notifications.clear_observers()
     ensure_db_and_tables()
-    notifications.ensure_default_observers()
 
     with Session(engine) as session:
         existing = session.exec(select(User)).first()
