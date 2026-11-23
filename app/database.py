@@ -1,15 +1,23 @@
+import importlib
 import logging
 import threading
 import time
 from contextlib import contextmanager
 
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Deployment assumption: render.yaml runs `manage.py init --no-drop` and then a
+# single-worker Uvicorn server sequentially, with production reload disabled;
+# the Dockerfile CMD also starts Uvicorn without workers. Lifespan startup and
+# request-time recovery therefore share one process, and this lock serializes
+# their schema setup. Concurrent upgrades from multiple processes are outside
+# this configuration and are not supported.
 _schema_lock = threading.Lock()
 
 
@@ -32,11 +40,34 @@ engine = create_engine(
 )
 
 
+_NOTIFICATION_EVENT_INDEX = "uq_notification_user_event"
+
+
+def _ensure_notification_event_id_column() -> None:
+    inspector = inspect(engine)
+    if "notification" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("notification")}
+    if "event_id" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE notification ADD COLUMN event_id VARCHAR"))
+        inspector = inspect(engine)
+    indexes = {index["name"] for index in inspector.get_indexes("notification")}
+    if _NOTIFICATION_EVENT_INDEX not in indexes:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX uq_notification_user_event "
+                    "ON notification (user_id, event_id)"
+                )
+            )
+
+
 def create_db_and_tables() -> None:
-    # Ensure model modules are imported so tables are registered on metadata.
-    import app.models  # noqa: F401
+    importlib.import_module("app.models")
 
     SQLModel.metadata.create_all(engine)
+    _ensure_notification_event_id_column()
 
 
 def drop_all() -> None:
@@ -85,7 +116,7 @@ def ensure_db_and_tables(
             if attempt > 1:
                 logger.info("Database schema ready after %s attempt(s)", attempt)
             return
-        except Exception as exc:  # noqa: BLE001 — first-boot resilience
+        except Exception as exc:
             last = exc
             if not is_db_not_ready_error(exc) or attempt >= retries:
                 raise

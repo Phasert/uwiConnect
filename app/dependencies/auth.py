@@ -53,3 +53,19 @@ async def is_admin_dep(user: AuthDep):
     return user
 
 AdminDep = Annotated[User, Depends(is_admin_dep)]
+
+
+async def is_alumni(user: User):
+    return user.role == "alumni" and user.email_verified == 1
+
+
+async def is_alumni_dep(user: AuthDep):
+    if not await is_alumni(user):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="You are not authorized to access this page",
+        )
+    return user
+
+
+AlumniDep = Annotated[User, Depends(is_alumni_dep)]
