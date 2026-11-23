@@ -101,6 +101,7 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         if listing.status != "pending":
             return {"ok": False, "error": "listing is not pending"}
         listing.status = "published"
+        listing.rejection_reason = None
         session.add(listing)
         session.commit()
         session.refresh(listing)
@@ -117,7 +118,9 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
     return {"ok": True, "listing": row, "notified": True}
 
 
-def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
+def reject_listing(
+    admin_id: int, listing_id: int, rejection_reason: str | None = None
+) -> dict[str, Any]:
     user = get_user(admin_id)
     if not user or user["role"] != "admin":
         return {"ok": False, "error": "admin only"}
@@ -128,6 +131,8 @@ def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         if listing.status != "pending":
             return {"ok": False, "error": "listing is not pending"}
         listing.status = "rejected"
+        reason = rejection_reason.strip() if rejection_reason else None
+        listing.rejection_reason = reason or None
         session.add(listing)
         session.commit()
         session.refresh(listing)

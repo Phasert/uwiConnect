@@ -34,10 +34,14 @@ def _publish(user_id: int, listing_id: int):
     )
 
 
-def _reject(user_id: int, listing_id: int):
+def _reject(user_id: int, listing_id: int, rejection_reason: str | None = None):
+    json = None
+    if rejection_reason is not None:
+        json = {"rejection_reason": rejection_reason}
     return client.post(
         f"/api/admin/listings/{listing_id}/reject",
         headers={"X-User-Id": str(user_id)},
+        json=json,
     )
 
 
@@ -88,13 +92,28 @@ def test_admin_rejection_hides_pending_listing():
         alum["id"], {"kind": "job", "title": "Rejected Job", "body": "Body"}
     )["listing"]["id"]
 
+    r = _reject(admin["id"], listing_id, "  Add a salary range.  ")
+
+    assert r.status_code == 200
+    assert r.json()["listing"]["status"] == "rejected"
+    assert r.json()["listing"]["rejection_reason"] == "Add a salary range."
+    assert listing_id not in _public_ids("/api/boards")
+    assert listing_id not in _public_ids("/api/boards?kind=job")
+    assert listing_id not in _pending_ids(admin["id"])
+
+
+def test_admin_rejects_event_without_reason_for_compatibility():
+    alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
+    admin = _login("admin@uwi.edu", "admin-dev")
+    listing_id = _submit(
+        alum["id"], {"kind": "event", "title": "Rejected Event", "body": "Body"}
+    )["listing"]["id"]
+
     r = _reject(admin["id"], listing_id)
 
     assert r.status_code == 200
     assert r.json()["listing"]["status"] == "rejected"
-    assert listing_id not in _public_ids("/api/boards")
-    assert listing_id not in _public_ids("/api/boards?kind=job")
-    assert listing_id not in _pending_ids(admin["id"])
+    assert r.json()["listing"]["rejection_reason"] is None
 
 
 def test_invalid_listing_id_returns_error():

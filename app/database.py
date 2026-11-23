@@ -63,11 +63,24 @@ def _ensure_notification_event_id_column() -> None:
             )
 
 
+def _ensure_listing_rejection_reason_column() -> None:
+    inspector = inspect(engine)
+    if "listing" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("listing")}
+    if "rejection_reason" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE listing ADD COLUMN rejection_reason VARCHAR")
+            )
+
+
 def create_db_and_tables() -> None:
     importlib.import_module("app.models")
 
     SQLModel.metadata.create_all(engine)
     _ensure_notification_event_id_column()
+    _ensure_listing_rejection_reason_column()
 
 
 def drop_all() -> None:
