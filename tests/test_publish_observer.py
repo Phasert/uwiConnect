@@ -3,7 +3,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
-from app.services.observer import LISTING_PUBLISHED, notification_publisher
+from app.services.observer import (
+    CAMPAIGN_SENT,
+    LISTING_PUBLISHED,
+    notification_publisher,
+)
 from app.services.website_notifications import (
     register_website_observer,
     website_notification_observer,
@@ -72,6 +76,23 @@ def _inbox(user_id: int) -> list:
     r = client.get("/api/notifications", headers={"X-User-Id": str(user_id)})
     assert r.status_code == 200
     return r.json()["notifications"]
+
+
+def _create_campaign(user_id: int, subject: str, body: str) -> dict:
+    r = client.post(
+        "/api/admin/campaigns",
+        json={"subject": subject, "body": body},
+        headers={"X-User-Id": str(user_id)},
+    )
+    assert r.status_code == 200
+    return r.json()
+
+
+def _send_campaign(user_id: int, campaign_id: int):
+    return client.post(
+        f"/api/admin/campaigns/{campaign_id}/send",
+        headers={"X-User-Id": str(user_id)},
+    )
 
 
 def test_publishing_job_emits_one_listing_published_event(events):
@@ -219,3 +240,22 @@ def test_pending_and_rejected_listings_create_no_notifications():
     inbox = _inbox(alum["id"])
     assert not any(pending_title in row["message"] for row in inbox)
     assert not any(rejected_title in row["message"] for row in inbox)
+
+
+def test_sending_campaign_via_api_notifies_verified_alumni_only():
+    alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
+    unverified = _login("alumni.pending@gmail.com", "alumni-dev")
+    admin = _login("admin@uwi.edu", "admin-dev")
+    subject = "API Campaign Notify"
+    body = "A new alumni opportunity."
+
+    campaign_id = _create_campaign(admin["id"], subject, body)["campaign"]["id"]
+    r = _send_campaign(admin["id"], campaign_id)
+
+    assert r.status_code == 200
+    rows = [row for row in _inbox(alum["id"]) if subject in row["message"]]
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == CAMPAIGN_SENT
+    assert rows[0]["message"] == f"Campaign: {subject} - {body}"
+    assert not any(subject in row["message"] for row in _inbox(unverified["id"]))
+    assert not any(subject in row["message"] for row in _inbox(admin["id"]))

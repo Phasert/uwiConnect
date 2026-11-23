@@ -7,15 +7,17 @@ from sqlalchemy import create_engine
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import Session, select
 
 import app.database as database_module
 import app.main as main_module
+from app.models.campaign import Campaign
 from app.models.listing import Listing
 from app.models.notification import Notification
 from app.models.user import User
-from app.services import notifications
+from app.services import campaigns, notifications
 from app.services.observer import (
+    CAMPAIGN_SENT,
     LISTING_PUBLISHED,
     NotificationEvent,
     notification_publisher,
@@ -57,6 +59,10 @@ def add_user(session, email, *, verified=1, role="alumni"):
     session.commit()
     session.refresh(user)
     return user
+
+
+def _failing_observer(event: NotificationEvent) -> None:
+    raise RuntimeError("observer failure")
 
 
 def test_observer_selects_only_eligible_alumni(wired):
@@ -317,6 +323,7 @@ def test_publish_listing_triggers_website_observer(wired, monkeypatch):
     monkeypatch.setattr("app.services.board_auth.engine", bound_engine)
     admin = add_user(wired, "admin@uwi.edu", role="admin")
     alum = add_user(wired, "alum@my.uwi.edu")
+    notification_publisher.subscribe(_failing_observer)
     register_website_observer()
 
     titles = {}
@@ -339,9 +346,53 @@ def test_publish_listing_triggers_website_observer(wired, monkeypatch):
         assert result["ok"], result
         assert result["listing"]["status"] == "published"
 
+    with Session(bound_engine) as session:
+        for listing_id in titles:
+            persisted = session.get(Listing, listing_id)
+            assert persisted is not None
+            assert persisted.status == "published"
+
     inbox = notifications.inbox(alum.id)
     assert len(inbox) == 2
     assert {row["event_type"] for row in inbox} == {LISTING_PUBLISHED}
     for title in titles.values():
         assert any(title in row["message"] for row in inbox)
+    assert notifications.inbox(admin.id) == []
+
+
+def test_send_campaign_triggers_website_observer(wired, monkeypatch) -> None:
+    bound_engine = wired.get_bind()
+    monkeypatch.setattr("app.services.campaigns.engine", bound_engine)
+    monkeypatch.setattr("app.services.board_auth.engine", bound_engine)
+    admin = add_user(wired, "admin@uwi.edu", role="admin")
+    alum = add_user(wired, "alum@my.uwi.edu")
+    unverified = add_user(wired, "unverified@gmail.com", verified=0)
+    campaign = Campaign(
+        admin_id=admin.id,
+        subject="Campaign From Service",
+        body="Alumni opportunity.",
+        status="draft",
+        created_at="now",
+    )
+    wired.add(campaign)
+    wired.commit()
+    wired.refresh(campaign)
+    notification_publisher.subscribe(_failing_observer)
+    register_website_observer()
+
+    result = campaigns.send_campaign(admin.id, campaign.id)
+
+    assert result["ok"] is True
+    with Session(bound_engine) as session:
+        persisted = session.get(Campaign, campaign.id)
+        assert persisted is not None
+        assert persisted.status == "sent"
+        assert persisted.sent_at is not None
+        assert persisted.sent_at == result["campaign"]["sent_at"]
+
+    inbox = notifications.inbox(alum.id)
+    assert len(inbox) == 1
+    assert inbox[0]["event_type"] == CAMPAIGN_SENT
+    assert inbox[0]["message"] == f"Campaign: {campaign.subject} - {campaign.body}"
+    assert notifications.inbox(unverified.id) == []
     assert notifications.inbox(admin.id) == []

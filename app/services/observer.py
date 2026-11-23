@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 LISTING_PUBLISHED = "listing.published"
 CAMPAIGN_SENT = "campaign.sent"
@@ -51,6 +54,13 @@ class NotificationObserver(Protocol):
     def __call__(self, event: NotificationEvent) -> None: ...
 
 
+def _observer_identity(observer: NotificationObserver) -> str:
+    qualname = getattr(observer, "__qualname__", None)
+    if qualname is not None:
+        return qualname
+    return type(observer).__qualname__
+
+
 class NotificationPublisher:
     def __init__(self) -> None:
         self._observers: list[NotificationObserver] = []
@@ -65,7 +75,15 @@ class NotificationPublisher:
 
     def notify(self, event: NotificationEvent) -> None:
         for observer in tuple(self._observers):
-            observer(event)
+            try:
+                observer(event)
+            except Exception:
+                logger.exception(
+                    "Notification observer %s failed for event type %s (event_id=%s)",
+                    _observer_identity(observer),
+                    event.event_type,
+                    event.event_id,
+                )
 
 
 notification_publisher = NotificationPublisher()
