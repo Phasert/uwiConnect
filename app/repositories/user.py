@@ -1,9 +1,11 @@
-from sqlmodel import Session, select, func
+from sqlmodel import Session, select
 from app.models.user import UserBase, User
 from typing import Optional, Tuple
 from app.utilities.pagination import Pagination
 from app.schemas.user import UserUpdate
 import logging
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,9 @@ class UserRepository:
             self.db.commit()
             self.db.refresh(user_db)
             return user_db
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ValueError("username or email already registered") from exc
         except Exception as e:
             logger.error(f"An error occurred while saving user: {e}")
             self.db.rollback()
@@ -40,6 +45,11 @@ class UserRepository:
 
     def get_by_username(self, username: str) -> Optional[User]:
         return self.db.exec(select(User).where(User.username == username)).one_or_none()
+
+    def get_by_email(self, email: str) -> Optional[User]:
+        return self.db.exec(
+            select(User).where(func.lower(User.email) == email.lower())
+        ).one_or_none()
 
     def get_by_id(self, user_id: int) -> Optional[User]:
         return self.db.get(User, user_id)
