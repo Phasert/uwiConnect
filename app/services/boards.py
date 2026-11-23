@@ -74,6 +74,8 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         listing = session.get(Listing, listing_id)
         if listing is None:
             return {"ok": False, "error": "listing not found"}
+        if listing.status != "pending":
+            return {"ok": False, "error": "listing is not pending"}
         listing.status = "published"
         session.add(listing)
         session.commit()
@@ -100,10 +102,13 @@ def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         return {"ok": False, "error": "admin only"}
     with Session(engine) as session:
         listing = session.get(Listing, listing_id)
-        if listing is not None:
-            listing.status = "rejected"
-            session.add(listing)
-            session.commit()
-            session.refresh(listing)
-        row = listing.model_dump() if listing is not None else None
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        if listing.status != "pending":
+            return {"ok": False, "error": "listing is not pending"}
+        listing.status = "rejected"
+        session.add(listing)
+        session.commit()
+        session.refresh(listing)
+        row = listing.model_dump()
     return {"ok": True, "listing": row}
