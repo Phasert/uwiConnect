@@ -9,4 +9,5 @@ class Listing(SQLModel, table=True):
     body: str
     status: str
     rejection_reason: str | None = None
+    deletion_requested: bool = False
     created_at: str

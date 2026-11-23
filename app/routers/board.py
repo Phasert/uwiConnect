@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services import accounts, boards, campaigns, notifications
 from app.services import board_auth as auth
@@ -28,6 +28,10 @@ class ListingBody(BaseModel):
     kind: str = Field(description="job | event")
     title: str
     body: str
+
+
+class ListingEditBody(ListingBody):
+    model_config = ConfigDict(extra="forbid")
 
 
 class RejectionBody(BaseModel):
@@ -89,12 +93,68 @@ def submit(
     return result
 
 
+@router.put("/boards/listings/{listing_id}")
+def edit(
+    listing_id: int,
+    body: ListingEditBody,
+    x_user_id: str | None = Header(default=None),
+) -> dict[str, Any]:
+    result = boards.edit_listing(
+        _actor_id(x_user_id),
+        listing_id,
+        kind=body.kind,
+        title=body.title,
+        body=body.body,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/boards/listings/{listing_id}/deletion-request")
+def request_deletion(
+    listing_id: int, x_user_id: str | None = Header(default=None)
+) -> dict[str, Any]:
+    result = boards.request_deletion(_actor_id(x_user_id), listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
 @router.get("/admin/listings/pending")
 def pending(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
     actor = auth.get_user(_actor_id(x_user_id))
     if not actor or actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin only")
     return {"listings": boards.list_pending()}
+
+
+@router.get("/admin/listings/deletion-requests")
+def deletion_requests(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
+    result = boards.list_deletion_requests(_actor_id(x_user_id))
+    if not result.get("ok"):
+        raise HTTPException(status_code=403, detail=result.get("error"))
+    return {"listings": result["listings"]}
+
+
+@router.post("/admin/listings/{listing_id}/deletion-request/approve")
+def approve_deletion(
+    listing_id: int, x_user_id: str | None = Header(default=None)
+) -> dict[str, Any]:
+    result = boards.approve_deletion(_actor_id(x_user_id), listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/listings/{listing_id}/deletion-request/deny")
+def deny_deletion(
+    listing_id: int, x_user_id: str | None = Header(default=None)
+) -> dict[str, Any]:
+    result = boards.deny_deletion(_actor_id(x_user_id), listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 @router.post("/admin/listings/{listing_id}/publish")
