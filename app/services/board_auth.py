@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -24,8 +25,13 @@ def public_user(user: User | dict | None) -> dict[str, Any] | None:
 
 
 def login(email: str, password: str) -> dict[str, Any] | None:
+    from app.services.accounts import normalize_email
+
+    normalized_email = normalize_email(email)
     with Session(engine) as session:
-        user = session.exec(select(User).where(User.email == email)).one_or_none()
+        user = session.exec(
+            select(User).where(func.lower(User.email) == normalized_email)
+        ).one_or_none()
         if user is None or not verify_password(password, user.password):
             return None
         return public_user(user)
