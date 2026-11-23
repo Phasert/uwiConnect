@@ -13,6 +13,7 @@
         <th scope="col">Type</th>
         <th scope="col">Title</th>
         <th scope="col">Status</th>
+        <th scope="col">Rejection reason</th>
       </tr>
     </thead>
     <tbody>
@@ -29,6 +30,17 @@
           <span class="badge bg-danger">Rejected</span>
           {% else %}
           <span class="badge bg-secondary">{{ listing.status | capitalize }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if listing.status == 'rejected' %}
+            {% if listing.rejection_reason is defined and listing.rejection_reason %}
+            {{ listing.rejection_reason }}
+            {% else %}
+            No reason provided.
+            {% endif %}
+          {% else %}
+          <span class="text-muted">&mdash;</span>
           {% endif %}
         </td>
       </tr>
