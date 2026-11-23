@@ -7,7 +7,7 @@ from sqlmodel import Field, SQLModel
 class UserBase(SQLModel):
     username: str = Field(index=True, unique=True)
     email: EmailStr = Field(index=True, unique=True)
-    password: str
+    password: str = Field(exclude=True, repr=False)
     role: str = ""
     email_verified: int = 0
     display_name: str = ""
