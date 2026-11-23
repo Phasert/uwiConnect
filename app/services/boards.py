@@ -9,9 +9,13 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.models.listing import Listing
-from app.services import notifications
 from app.services.accounts import require_verified_alumni
 from app.services.board_auth import get_user
+from app.services.observer import (
+    LISTING_PUBLISHED,
+    NotificationEvent,
+    notification_publisher,
+)
 
 
 def _now() -> str:
@@ -92,18 +96,15 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         session.refresh(listing)
         row = listing.model_dump()
 
-    # DEFECT: job publish forgets to call notifications.notify (Observer bypass)
-    # Only events that somehow republish would notify - jobs stay silent.
-    if row["kind"] == "event":
-        notifications.notify(
-            {
-                "event_type": "listing.published",
-                "listing_id": listing_id,
-                "kind": "event",
-                "message": f"New event on the board: {row['title']}",
-            }
+    notification_publisher.notify(
+        NotificationEvent(
+            event_type=LISTING_PUBLISHED,
+            listing_id=listing_id,
+            kind=row["kind"],
+            message=f"New {row['kind']} on the board: {row['title']}",
         )
-    return {"ok": True, "listing": row, "notified": row["kind"] == "event"}
+    )
+    return {"ok": True, "listing": row, "notified": True}
 
 
 def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
