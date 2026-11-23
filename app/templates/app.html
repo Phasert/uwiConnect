@@ -7,6 +7,36 @@
   Browse published boards and track campaign notifications through the CampusWire API.
   Seed listings and accounts are ready after <code>python manage.py init</code>.
 </p>
+<form action="{{ url_for('user_home_view') }}" method="get" class="row g-2 mb-4 align-items-center">
+  <div class="col-12 col-sm-6 col-lg-4">
+    <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Search titles and descriptions" aria-label="Search listings">
+  </div>
+  <div class="col-6 col-sm-3 col-lg-2">
+    <select class="form-select" name="kind" aria-label="Listing type">
+      <option value="">All types</option>
+      <option value="job"{% if kind == "job" %} selected{% endif %}>Jobs</option>
+      <option value="event"{% if kind == "event" %} selected{% endif %}>Events</option>
+    </select>
+  </div>
+  <div class="col-6 col-sm-3 col-lg-2">
+    <button class="btn btn-primary w-100" type="submit">Search</button>
+  </div>
+</form>
+<div class="row g-3 mb-4">
+  {% for listing in listings %}
+  <div class="col-12 col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="card-title h5">{{ listing.title }}</h2>
+        <p class="card-subtitle mb-2 text-body-secondary">{{ listing.kind|title }}</p>
+        <p class="card-text">{{ listing.body }}</p>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p>No listings found</p>
+  {% endfor %}
+</div>
 <div class="app-actions">
   <a href="/docs">Open API docs</a>
   <a class="secondary" href="/api/boards">Browse boards</a>

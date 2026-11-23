@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -22,11 +23,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def browse_published(*, kind: str | None = None) -> list[dict[str, Any]]:
+def browse_published(
+    *, kind: str | None = None, q: str | None = None
+) -> list[dict[str, Any]]:
     with Session(engine) as session:
         stmt = select(Listing).where(Listing.status == "published")
         if kind:
             stmt = stmt.where(Listing.kind == kind)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(Listing.title.ilike(pattern), Listing.body.ilike(pattern))
+            )
         stmt = stmt.order_by(Listing.id.desc())
         return [r.model_dump() for r in session.exec(stmt).all()]
 
@@ -42,6 +50,8 @@ def submit_listing(
         return {"ok": False, "error": err}
     if kind not in {"job", "event"}:
         return {"ok": False, "error": "kind must be job|event"}
+    if not title.strip() or not body.strip():
+        return {"ok": False, "error": "title and body are required"}
 
     status = "pending"
     with Session(engine) as session:

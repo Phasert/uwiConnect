@@ -69,8 +69,8 @@ def verify_email(x_user_id: str | None = Header(default=None)) -> dict[str, Any]
 
 
 @router.get("/boards")
-def browse(kind: str | None = None) -> dict[str, Any]:
-    return {"listings": boards.browse_published(kind=kind)}
+def browse(kind: str | None = None, q: str | None = None) -> dict[str, Any]:
+    return {"listings": boards.browse_published(kind=kind, q=q)}
 
 
 @router.post("/boards/listings")
