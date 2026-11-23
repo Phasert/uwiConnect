@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -33,7 +35,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         # Drop can fail on a brand-new empty DB; create path still retries.
         try:
             drop_all()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             from app.database import is_db_not_ready_error
 
             if not is_db_not_ready_error(exc):
@@ -158,6 +160,67 @@ def cmd_users(args: argparse.Namespace) -> None:
             )
 
 
+@contextmanager
+def _campaign_processor_lock(lock_path: Path | None = None) -> Iterator[bool]:
+    """Return whether this process acquired the campaign processor lock."""
+    path = lock_path or (
+        Path(__file__).resolve().parent.parent / ".campaign-process.lock"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("a+b") as lock_file:
+        if lock_file.tell() == 0:
+            lock_file.write(b"\0")
+            lock_file.flush()
+        lock_file.seek(0)
+
+        if sys.platform == "win32":
+            import msvcrt
+
+            try:
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+
+        import fcntl
+
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def cmd_process_campaigns(args: argparse.Namespace) -> None:
+    """Process due campaigns and recover campaigns left in sending state."""
+    from app.database import ensure_db_and_tables
+    from app.services import campaigns
+    from app.services.website_notifications import register_website_observer
+
+    with _campaign_processor_lock() as acquired:
+        if not acquired:
+            print("Campaign processor is already running.")
+            return
+        ensure_db_and_tables()
+        register_website_observer()
+        result = campaigns.process_due_campaigns()
+        print(
+            f"Campaign processor: {result['processed']} processed, "
+            f"{result['retained']} retained in sending state."
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python manage.py",
@@ -203,6 +266,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_users = sub.add_parser("users", help="List users in the database")
     p_users.set_defaults(func=cmd_users)
+
+    p_process_campaigns = sub.add_parser(
+        "process-campaigns",
+        help="Process due scheduled campaigns",
+    )
+    p_process_campaigns.set_defaults(func=cmd_process_campaigns)
 
     p_report = sub.add_parser(
         "report",

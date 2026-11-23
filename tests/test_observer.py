@@ -1,5 +1,6 @@
 
 import logging
+import threading
 
 import pytest
 
@@ -9,6 +10,7 @@ from app.services.observer import (
     NotificationEvent,
     NotificationObserver,
     NotificationPublisher,
+    NotificationPublishResult,
 )
 
 
@@ -30,6 +32,61 @@ class FailingObserver:
     def __call__(self, event: NotificationEvent) -> None:
         self.events.append(event)
         raise self.error
+
+
+def test_notify_preserves_original_none_return_when_no_observers() -> None:
+    publisher = NotificationPublisher()
+
+    assert publisher.notify(
+        NotificationEvent(CAMPAIGN_SENT, campaign_id=3)
+    ) is None
+
+
+def test_notify_with_result_no_observers_has_empty_attempted_and_failed_lists() -> None:
+    publisher = NotificationPublisher()
+
+    result = publisher.notify_with_result(
+        NotificationEvent(CAMPAIGN_SENT, campaign_id=3)
+    )
+
+    assert result.succeeded is False
+    assert result.attempted_observers == ()
+    assert result.failed_observers == ()
+
+
+def test_notify_with_result_is_per_call_under_concurrent_publishing() -> None:
+    publisher = NotificationPublisher()
+    barrier = threading.Barrier(2)
+
+    def selective_observer(event: NotificationEvent) -> None:
+        if event.campaign_id == 101:
+            raise RuntimeError("first call fails")
+
+    publisher.subscribe(selective_observer)
+
+    def publish(event: NotificationEvent) -> NotificationPublishResult:
+        barrier.wait(timeout=2)
+        return publisher.notify_with_result(event)
+
+    first_event = NotificationEvent(CAMPAIGN_SENT, campaign_id=101)
+    second_event = NotificationEvent(CAMPAIGN_SENT, campaign_id=202)
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(publish, first_event)
+        second = executor.submit(publish, second_event)
+        first_result = first.result(timeout=3)
+        second_result = second.result(timeout=3)
+
+    assert first_result.succeeded is False
+    assert second_result.succeeded is True
+    assert len(first_result.attempted_observers) == 1
+    assert len(second_result.attempted_observers) == 1
+    assert first_result.attempted_observers == (selective_observer,)
+    assert second_result.attempted_observers == (selective_observer,)
+    assert len(first_result.failed_observers) == 1
+    assert second_result.failed_observers == ()
 
 
 def test_subscribe_registers_observer_for_dispatch() -> None:
