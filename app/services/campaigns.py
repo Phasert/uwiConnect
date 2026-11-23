@@ -9,10 +9,12 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.models.campaign import Campaign
-from app.models.notification import Notification
-from app.models.user import User
-from app.services import notifications
 from app.services.board_auth import get_user
+from app.services.observer import (
+    CAMPAIGN_SENT,
+    NotificationEvent,
+    notification_publisher,
+)
 
 
 def _now() -> str:
@@ -59,27 +61,13 @@ def send_campaign(admin_id: int, campaign_id: int) -> dict[str, Any]:
         session.refresh(campaign)
         row = campaign.model_dump()
 
-    event = {
-        "event_type": "campaign.sent",
-        "campaign_id": campaign_id,
-        "message": f"Campaign: {row['subject']} - {row['body'][:120]}",
-    }
-    # Uses Observer bus - but default observer includes unverified users
-    notifications.notify(event)
-
-    # DEFECT: also writes a second direct insert path for "admins" only,
-    # duplicating notifications when observers already ran
-    with Session(engine) as session:
-        admins = session.exec(select(User).where(User.role == "admin")).all()
-        for admin in admins:
-            session.add(
-                Notification(
-                    user_id=admin.id,
-                    event_type="campaign.sent",
-                    message=event["message"],
-                    created_at=_now(),
-                )
-            )
-        session.commit()
+    event_message = f"Campaign: {row['subject']} - {row['body'][:120]}"
+    notification_publisher.notify(
+        NotificationEvent(
+            event_type=CAMPAIGN_SENT,
+            campaign_id=campaign_id,
+            message=event_message,
+        )
+    )
 
     return {"ok": True, "campaign": row}
