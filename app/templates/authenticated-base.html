@@ -5,7 +5,10 @@
   <header class="app-topbar">
     <a class="brand-wordmark" href="{{ url_for('index_view') }}">CampusWire</a>
     <nav class="app-topnav" aria-label="App">
-      <a class="{{ 'is-active' if request.url.path.startswith('/app') }}" href="{{ url_for('user_home_view') }}">Home</a>
+      <a class="{{ 'is-active' if request.url.path == '/app' }}" href="{{ url_for('user_home_view') }}">Home</a>
+      {% if user.role == 'alumni' %}
+      <a class="{{ 'is-active' if request.url.path.startswith('/app/dashboard') }}" href="{{ url_for('user_dashboard_view') }}">My submissions</a>
+      {% endif %}
       {% if user.role == 'admin' %}
       <a class="{{ 'is-active' if request.url.path.startswith('/admin') }}" href="{{ url_for('admin_home_view') }}">Admin</a>
       {% endif %}
