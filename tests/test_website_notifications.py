@@ -309,12 +309,6 @@ def test_existing_database_gains_event_id_and_unique_index(tmp_path, monkeypatch
     assert rows[0][5] is None
 
 
-@pytest.mark.skip(
-    reason=(
-        "Pending Kyle's #5.3: boards.publish_listing() must emit a "
-        "NotificationEvent through the shared publisher before this can run"
-    )
-)
 def test_publish_listing_triggers_website_observer(wired, monkeypatch):
     from app.services import boards
 
