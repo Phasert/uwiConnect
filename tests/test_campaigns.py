@@ -1,8 +1,10 @@
 from contextlib import contextmanager
 
-from sqlmodel import Session
+import pytest
+from sqlmodel import Session, select
 
 from app.models.campaign import Campaign
+from app.models.notification import Notification
 from app.models.user import User
 from app.services import campaigns
 from app.services.observer import (
@@ -10,6 +12,7 @@ from app.services.observer import (
     NotificationEvent,
     notification_publisher,
 )
+from app.services.website_notifications import register_website_observer
 
 
 class RecordingObserver:
@@ -20,13 +23,14 @@ class RecordingObserver:
         self.events.append(event)
 
 
-def add_user(session, *, role: str) -> User:
+def add_user(session, *, role: str, verified: int = 1, email: str | None = None) -> User:
+    email = email or f"{role}@example.com"
     user = User(
-        username=f"{role}@example.com",
-        email=f"{role}@example.com",
+        username=email,
+        email=email,
         password="x",
         role=role,
-        email_verified=1,
+        email_verified=verified,
         display_name=role.title(),
     )
     session.add(user)
@@ -123,6 +127,33 @@ def test_send_campaign_event_has_expected_payload(test_session, monkeypatch) -> 
     assert "-THIS-TEXT-MUST-NOT-BE-INCLUDED" not in event.message
 
 
+@pytest.mark.parametrize("body_length", [119, 120, 121])
+def test_send_campaign_truncates_message_at_120_characters(
+    test_session, monkeypatch, body_length
+) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin")
+    campaign = add_campaign(test_session, admin.id)
+    body = "A" * body_length
+    campaign.body = body
+    test_session.add(campaign)
+    test_session.commit()
+    test_session.refresh(campaign)
+    observer = RecordingObserver()
+
+    with isolate_publisher():
+        notification_publisher.subscribe(observer)
+        result = campaigns.send_campaign(admin.id, campaign.id)
+
+    assert result["ok"] is True
+    assert len(observer.events) == 1
+    event = observer.events[0]
+    assert event.event_type == CAMPAIGN_SENT
+    assert event.campaign_id == campaign.id
+    assert event.message == f"Campaign: {campaign.subject} - {body[:120]}"
+
+
 def test_non_admin_send_does_not_publish_event(test_session, monkeypatch) -> None:
     monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
     monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
@@ -149,3 +180,75 @@ def test_nonexistent_campaign_does_not_publish_event(test_session, monkeypatch) 
 
     assert result == {"ok": False, "error": "campaign not found"}
     assert observer.events == []
+
+
+def test_send_campaign_persists_notification_for_verified_alumni(
+    test_session, monkeypatch
+) -> None:
+    bound_engine = test_session.get_bind()
+    monkeypatch.setattr(campaigns, "engine", bound_engine)
+    monkeypatch.setattr("app.services.board_auth.engine", bound_engine)
+    monkeypatch.setattr(
+        "app.services.website_notifications.engine",
+        bound_engine,
+    )
+
+    admin = add_user(test_session, role="admin", email="campaign-admin@uwi.edu")
+    verified_alumnus = add_user(
+        test_session,
+        role="alumni",
+        verified=1,
+        email="verified@my.uwi.edu",
+    )
+    unverified_alumnus = add_user(
+        test_session,
+        role="alumni",
+        verified=0,
+        email="unverified@gmail.com",
+    )
+    campaign = add_campaign(test_session, admin.id)
+    captured = RecordingObserver()
+
+    with isolate_publisher():
+        register_website_observer()
+        notification_publisher.subscribe(captured)
+
+        result = campaigns.send_campaign(admin.id, campaign.id)
+
+        assert result["ok"] is True
+        assert len(captured.events) == 1
+        event = captured.events[0]
+        assert event.event_type == CAMPAIGN_SENT
+        assert event.campaign_id == campaign.id
+        assert event.event_id
+        assert event.message == (
+            f"Campaign: {campaign.subject} - {campaign.body[:120]}"
+        )
+
+        rows = test_session.exec(
+            select(Notification).where(Notification.event_id == event.event_id)
+        ).all()
+        assert [row.user_id for row in rows] == [verified_alumnus.id]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.event_type == "campaign.sent"
+        assert row.message == event.message
+
+        assert not test_session.exec(
+            select(Notification).where(
+                Notification.user_id == unverified_alumnus.id
+            )
+        ).all()
+        assert not test_session.exec(
+            select(Notification).where(Notification.user_id == admin.id)
+        ).all()
+
+        notification_publisher.notify(event)
+
+        replayed_rows = test_session.exec(
+            select(Notification).where(
+                Notification.user_id == verified_alumnus.id,
+                Notification.event_id == event.event_id,
+            )
+        ).all()
+        assert len(replayed_rows) == 1
