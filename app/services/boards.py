@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -22,11 +23,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def browse_published(*, kind: str | None = None) -> list[dict[str, Any]]:
+def browse_published(
+    *, kind: str | None = None, q: str | None = None
+) -> list[dict[str, Any]]:
     with Session(engine) as session:
         stmt = select(Listing).where(Listing.status == "published")
         if kind:
             stmt = stmt.where(Listing.kind == kind)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(Listing.title.ilike(pattern), Listing.body.ilike(pattern))
+            )
         stmt = stmt.order_by(Listing.id.desc())
         return [r.model_dump() for r in session.exec(stmt).all()]
 
@@ -42,6 +50,8 @@ def submit_listing(
         return {"ok": False, "error": err}
     if kind not in {"job", "event"}:
         return {"ok": False, "error": "kind must be job|event"}
+    if not title.strip() or not body.strip():
+        return {"ok": False, "error": "title and body are required"}
 
     status = "pending"
     with Session(engine) as session:
@@ -91,6 +101,7 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         if listing.status != "pending":
             return {"ok": False, "error": "listing is not pending"}
         listing.status = "published"
+        listing.rejection_reason = None
         session.add(listing)
         session.commit()
         session.refresh(listing)
@@ -107,7 +118,9 @@ def publish_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
     return {"ok": True, "listing": row, "notified": True}
 
 
-def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
+def reject_listing(
+    admin_id: int, listing_id: int, rejection_reason: str | None = None
+) -> dict[str, Any]:
     user = get_user(admin_id)
     if not user or user["role"] != "admin":
         return {"ok": False, "error": "admin only"}
@@ -118,6 +131,8 @@ def reject_listing(admin_id: int, listing_id: int) -> dict[str, Any]:
         if listing.status != "pending":
             return {"ok": False, "error": "listing is not pending"}
         listing.status = "rejected"
+        reason = rejection_reason.strip() if rejection_reason else None
+        listing.rejection_reason = reason or None
         session.add(listing)
         session.commit()
         session.refresh(listing)

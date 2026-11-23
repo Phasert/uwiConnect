@@ -30,6 +30,10 @@ class ListingBody(BaseModel):
     body: str
 
 
+class RejectionBody(BaseModel):
+    rejection_reason: str | None = None
+
+
 class CampaignBody(BaseModel):
     subject: str
     body: str
@@ -73,8 +77,8 @@ def verify_email(x_user_id: str | None = Header(default=None)) -> dict[str, Any]
 
 
 @router.get("/boards")
-def browse(kind: str | None = None) -> dict[str, Any]:
-    return {"listings": boards.browse_published(kind=kind)}
+def browse(kind: str | None = None, q: str | None = None) -> dict[str, Any]:
+    return {"listings": boards.browse_published(kind=kind, q=q)}
 
 
 @router.post("/boards/listings")
@@ -109,9 +113,14 @@ def publish(
 
 @router.post("/admin/listings/{listing_id}/reject")
 def reject(
-    listing_id: int, x_user_id: str | None = Header(default=None)
+    listing_id: int,
+    body: RejectionBody | None = None,
+    x_user_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    result = boards.reject_listing(_actor_id(x_user_id), listing_id)
+    rejection_reason = body.rejection_reason if body else None
+    result = boards.reject_listing(
+        _actor_id(x_user_id), listing_id, rejection_reason=rejection_reason
+    )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
