@@ -14,6 +14,7 @@
         <th scope="col">Title</th>
         <th scope="col">Status</th>
         <th scope="col">Rejection reason</th>
+        <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -43,6 +44,16 @@
           <span class="text-muted">&mdash;</span>
           {% endif %}
         </td>
+        <td>
+          {% if listing.deletion_requested is defined and listing.deletion_requested %}
+          <span class="badge bg-info text-dark">Deletion requested — awaiting admin review</span>
+          {% else %}
+            {% if listing.status == 'pending' or listing.status == 'rejected' %}
+            <button type="button" class="btn btn-sm btn-outline-primary mb-1" data-edit-id="{{ listing.id }}" data-kind="{{ listing.kind }}" data-title="{{ listing.title }}" data-body="{{ listing.body }}">Edit</button>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-danger mb-1" data-delete-id="{{ listing.id }}">Request deletion</button>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -54,7 +65,120 @@
 </div>
 {% endif %}
 
+<div id="listingActionMessage" class="alert d-none" role="alert" data-user-id="{{ user.id }}"></div>
+
+<div id="editListingPanel" class="card mt-3 d-none">
+  <div class="card-body">
+    <h2 class="h5">Edit listing</h2>
+    <form id="editListingForm">
+      <div class="mb-3">
+        <label class="form-label" for="editKind">Type</label>
+        <select class="form-select" id="editKind" required>
+          <option value="job">Job</option>
+          <option value="event">Event</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="editTitle">Title</label>
+        <input class="form-control" id="editTitle" required />
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="editBody">Description</label>
+        <textarea class="form-control" id="editBody" rows="4" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Save changes</button>
+      <button type="button" class="btn btn-secondary" id="cancelEdit">Cancel</button>
+    </form>
+  </div>
+</div>
+
 <div class="app-actions">
   <a href="{{ url_for('user_home_view') }}">Back to alumni boards</a>
 </div>
+{% endblock %}
+
+{% block subpage_scripts %}
+<script>
+(function () {
+  const message = document.getElementById('listingActionMessage');
+  const panel = document.getElementById('editListingPanel');
+  const form = document.getElementById('editListingForm');
+  const kindInput = document.getElementById('editKind');
+  const titleInput = document.getElementById('editTitle');
+  const bodyInput = document.getElementById('editBody');
+  const userId = message.dataset.userId;
+  let editId = null;
+
+  function showMessage(text, type) {
+    message.textContent = text;
+    message.className = 'alert alert-' + type;
+  }
+
+  document.querySelectorAll('[data-edit-id]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      editId = button.dataset.editId;
+      kindInput.value = button.dataset.kind;
+      titleInput.value = button.dataset.title;
+      bodyInput.value = button.dataset.body;
+      panel.classList.remove('d-none');
+      message.className = 'alert d-none';
+      titleInput.focus();
+    });
+  });
+
+  document.getElementById('cancelEdit').addEventListener('click', function () {
+    panel.classList.add('d-none');
+    editId = null;
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const title = titleInput.value.trim();
+    const body = bodyInput.value.trim();
+    if (!title || !body) {
+      showMessage('Title and description are required.', 'danger');
+      return;
+    }
+    fetch('/api/boards/listings/' + editId, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': userId
+      },
+      body: JSON.stringify({ kind: kindInput.value, title: title, body: body })
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+        panel.classList.add('d-none');
+        showMessage('Listing updated and sent for admin review.', 'success');
+      })
+      .catch(function () {
+        showMessage('Could not update this listing. The listing service may be unavailable.', 'danger');
+      });
+  });
+
+  document.querySelectorAll('[data-delete-id]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (!window.confirm('Request deletion of this listing? An admin must approve it before it is removed.')) {
+        return;
+      }
+      fetch('/api/boards/listings/' + button.dataset.deleteId + '/deletion-request', {
+        method: 'POST',
+        headers: { 'X-User-Id': userId }
+      })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('Request failed');
+          }
+          showMessage('Deletion request sent. The listing stays visible until an admin approves it.', 'success');
+        })
+        .catch(function () {
+          showMessage('Could not request deletion. The listing service may be unavailable.', 'danger');
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}
