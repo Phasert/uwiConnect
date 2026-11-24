@@ -19,6 +19,7 @@
     {% endif %}
 
     <form id="listingSubmissionForm" method="post" action="{{ url_for('submit_listing_action') }}">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
       <div class="mb-3">
         <label class="form-label" for="submissionKind">Listing type</label>
         <select class="form-select" id="submissionKind" name="kind" required>
@@ -171,9 +172,14 @@
         <td>
           {% if listing.deletion_requested is defined and listing.deletion_requested %}
           <span class="badge bg-info text-dark">Deletion requested — awaiting admin review</span>
+          {% elif listing.revision_requested is defined and listing.revision_requested %}
+          <span class="badge bg-info text-dark">Revision requested — awaiting admin review</span>
           {% else %}
             {% if listing.status == 'pending' or listing.status == 'rejected' %}
             <button type="button" class="btn btn-sm btn-outline-primary mb-1" data-edit-id="{{ listing.id }}" data-kind="{{ listing.kind }}" data-title="{{ listing.title }}" data-body="{{ listing.body }}">Edit</button>
+            {% endif %}
+            {% if listing.status == 'published' %}
+            <button type="button" class="btn btn-sm btn-outline-primary mb-1" data-revise-id="{{ listing.id }}" data-kind="{{ listing.kind }}" data-title="{{ listing.title }}" data-body="{{ listing.body }}">Request revision</button>
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-danger mb-1" data-delete-id="{{ listing.id }}">Request deletion</button>
           {% endif %}
@@ -189,11 +195,11 @@
 </div>
 {% endif %}
 
-<div id="listingActionMessage" class="alert d-none" role="alert" data-user-id="{{ user.id }}"></div>
+<div id="listingActionMessage" class="alert d-none" role="alert" data-csrf-token="{{ get_csrf_token(request)|e }}"></div>
 
 <div id="editListingPanel" class="card mt-3 d-none">
   <div class="card-body">
-    <h2 class="h5">Edit listing</h2>
+    <h2 class="h5" id="editListingHeading">Edit listing</h2>
     <form id="editListingForm">
       <div class="mb-3">
         <label class="form-label" for="editKind">Type</label>
@@ -210,7 +216,7 @@
         <label class="form-label" for="editBody">Description</label>
         <textarea class="form-control" id="editBody" rows="4" required></textarea>
       </div>
-      <button type="submit" class="btn btn-primary">Save changes</button>
+      <button type="submit" class="btn btn-primary" id="editSubmitButton">Save changes</button>
       <button type="button" class="btn btn-secondary" id="cancelEdit">Cancel</button>
     </form>
   </div>
@@ -226,16 +232,69 @@
 (function () {
   const message = document.getElementById('listingActionMessage');
   const panel = document.getElementById('editListingPanel');
+  const heading = document.getElementById('editListingHeading');
+  const submitButton = document.getElementById('editSubmitButton');
   const form = document.getElementById('editListingForm');
   const kindInput = document.getElementById('editKind');
   const titleInput = document.getElementById('editTitle');
   const bodyInput = document.getElementById('editBody');
-  const userId = message.dataset.userId;
+  const csrfToken = message.dataset.csrfToken;
   let editId = null;
+  let editMode = 'edit';
 
   function showMessage(text, type) {
     message.textContent = text;
     message.className = 'alert alert-' + type;
+  }
+
+  function jsonHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken
+    };
+  }
+
+  function actionHeaders() {
+    return { 'X-CSRF-Token': csrfToken };
+  }
+
+  async function errorMessage(response, fallback) {
+    let detail = fallback;
+    try {
+      const data = await response.json();
+      if (data && data.detail) {
+        detail = data.detail;
+      }
+    } catch (error) {
+      detail = fallback;
+    }
+    if (response.status === 401) {
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (response.status === 403) {
+      if (String(detail).indexOf('CSRF') !== -1) {
+        return 'Your security token expired. Reload the page and try again.';
+      }
+      return 'You do not have permission to do that.';
+    }
+    return detail;
+  }
+
+  async function sendAction(url, options, successMessage, fallback) {
+    let response;
+    try {
+      response = await fetch(url, Object.assign({ credentials: 'same-origin' }, options));
+    } catch (error) {
+      showMessage(fallback, 'danger');
+      return false;
+    }
+    if (response.ok) {
+      sessionStorage.setItem('listingActionMessage', successMessage);
+      window.location.reload();
+      return true;
+    }
+    showMessage(await errorMessage(response, fallback), 'danger');
+    return false;
   }
 
   const pendingMessage = sessionStorage.getItem('listingActionMessage');
@@ -244,12 +303,15 @@
     showMessage(pendingMessage, 'success');
   }
 
-  document.querySelectorAll('[data-edit-id]').forEach(function (button) {
+  document.querySelectorAll('[data-edit-id], [data-revise-id]').forEach(function (button) {
     button.addEventListener('click', function () {
-      editId = button.dataset.editId;
+      editMode = button.dataset.editId ? 'edit' : 'revision';
+      editId = button.dataset.editId || button.dataset.reviseId;
       kindInput.value = button.dataset.kind;
       titleInput.value = button.dataset.title;
       bodyInput.value = button.dataset.body;
+      heading.textContent = editMode === 'revision' ? 'Request a revision' : 'Edit listing';
+      submitButton.textContent = editMode === 'revision' ? 'Send revision request' : 'Save changes';
       panel.classList.remove('d-none');
       message.className = 'alert d-none';
       titleInput.focus();
@@ -261,7 +323,7 @@
     editId = null;
   });
 
-  form.addEventListener('submit', function (event) {
+  form.addEventListener('submit', async function (event) {
     event.preventDefault();
     const title = titleInput.value.trim();
     const body = bodyInput.value.trim();
@@ -269,45 +331,34 @@
       showMessage('Title and description are required.', 'danger');
       return;
     }
-    fetch('/api/boards/listings/' + editId, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userId
-      },
-      body: JSON.stringify({ kind: kindInput.value, title: title, body: body })
-    })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error('Request failed');
-        }
-        sessionStorage.setItem('listingActionMessage', 'Listing updated and sent for admin review.');
-        window.location.reload();
-      })
-      .catch(function () {
-        showMessage('Could not update this listing. The listing service may be unavailable.', 'danger');
-      });
+    const payload = { kind: kindInput.value, title: title, body: body };
+    const isRevision = editMode === 'revision';
+    const url = isRevision
+      ? '/api/boards/listings/' + editId + '/revision-request'
+      : '/api/boards/listings/' + editId;
+    const options = {
+      method: isRevision ? 'POST' : 'PUT',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    };
+    const successMessage = isRevision
+      ? 'Revision request sent. The published listing stays unchanged until an admin approves it.'
+      : 'Listing updated and sent for admin review.';
+    await sendAction(url, options, successMessage, 'The listing service may be unavailable. Please try again.');
   });
 
   document.querySelectorAll('[data-delete-id]').forEach(function (button) {
-    button.addEventListener('click', function () {
+    button.addEventListener('click', async function () {
       if (!window.confirm('Request deletion of this listing? An admin must approve it before it is removed.')) {
         return;
       }
-      fetch('/api/boards/listings/' + button.dataset.deleteId + '/deletion-request', {
-        method: 'POST',
-        headers: { 'X-User-Id': userId }
-      })
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('Request failed');
-          }
-          sessionStorage.setItem('listingActionMessage', 'Deletion request sent. The listing stays visible until an admin approves it.');
-          window.location.reload();
-        })
-        .catch(function () {
-          showMessage('Could not request deletion. The listing service may be unavailable.', 'danger');
-        });
+      const url = '/api/boards/listings/' + button.dataset.deleteId + '/deletion-request';
+      await sendAction(
+        url,
+        { method: 'POST', headers: actionHeaders() },
+        'Deletion request sent. The listing stays visible until an admin approves it.',
+        'Could not request deletion. The listing service may be unavailable.'
+      );
     });
   });
 })();

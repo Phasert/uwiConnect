@@ -35,6 +35,10 @@ def _dashboard_response(request, user):
     pending = boards.list_pending()
     deletion_result = boards.list_deletion_requests(user.id)
     deletion_requests = deletion_result["listings"] if deletion_result.get("ok") else []
+    revision_result = boards.list_revision_requests(user.id)
+    revision_requests = (
+        revision_result["revision_requests"] if revision_result.get("ok") else []
+    )
     campaign_rows = campaigns.list_campaigns()
 
     return templates.TemplateResponse(
@@ -44,8 +48,11 @@ def _dashboard_response(request, user):
             "user": user,
             "pending_listings": pending,
             "deletion_requests": deletion_requests,
+            "revision_requests": revision_requests,
             "campaigns": campaign_rows,
-            "authors": _author_names(pending + deletion_requests),
+            "authors": _author_names(
+                pending + deletion_requests + [item["original"] for item in revision_requests]
+            ),
             "pending_count": len(pending),
             "deletion_count": len(deletion_requests),
             "published_count": len(boards.browse_published()),
@@ -124,6 +131,34 @@ async def admin_deny_deletion(request: Request, listing_id: int, user: AdminDep)
         flash(
             request,
             result.get("error", "The request could not be denied."),
+            "danger",
+        )
+    return _redirect(request)
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/approve")
+async def admin_approve_revision(request: Request, listing_id: int, user: AdminDep):
+    result = boards.approve_revision(user.id, listing_id)
+    if result.get("ok"):
+        flash(request, f"Listing #{listing_id} revision approved.", "success")
+    else:
+        flash(
+            request,
+            result.get("error", "The revision could not be approved."),
+            "danger",
+        )
+    return _redirect(request)
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/deny")
+async def admin_deny_revision(request: Request, listing_id: int, user: AdminDep):
+    result = boards.deny_revision(user.id, listing_id)
+    if result.get("ok"):
+        flash(request, f"Revision request for listing #{listing_id} denied.", "success")
+    else:
+        flash(
+            request,
+            result.get("error", "The revision request could not be denied."),
             "danger",
         )
     return _redirect(request)

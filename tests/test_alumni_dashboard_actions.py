@@ -1,12 +1,9 @@
-import re
-
 import pytest
 from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
-from app.services import board_auth
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
 PASSWORD = "alumni-dev"
@@ -116,18 +113,20 @@ def test_dashboard_contains_agreed_api_contract_and_feedback(client, monkeypatch
         "app.routers.user_home.boards.list_by_author", fake_list_by_author
     )
     page = _login(client).get("/app/dashboard")
-    alum_id = board_auth.login(ALUMNI_EMAIL, PASSWORD)["id"]
 
     assert page.status_code == 200
     assert '/api/boards/listings/' in page.text
     assert "/deletion-request" in page.text
-    assert "method: 'PUT'" in page.text
+    assert "method: isRevision ? 'POST' : 'PUT'" in page.text
     assert "method: 'POST'" in page.text
     assert "Title and description are required." in page.text
     assert "Listing updated and sent for admin review." in page.text
+    assert "Revision request sent. The published listing stays unchanged" in page.text
     assert "The listing stays visible until an admin approves it." in page.text
     assert "The listing service may be unavailable." in page.text
-    assert 'data-user-id="' + str(alum_id) + '"' in page.text
+    assert 'data-csrf-token="' in page.text
+    assert "data-user-id" not in page.text
+    assert "X-User-Id" not in page.text
 
 
 def test_successful_actions_refresh_and_preserve_feedback(client, monkeypatch):
@@ -140,19 +139,16 @@ def test_successful_actions_refresh_and_preserve_feedback(client, monkeypatch):
     page = _login(client).get("/app/dashboard")
 
     assert page.status_code == 200
-    assert page.text.count("window.location.reload()") == 2
-    assert page.text.count("sessionStorage.setItem('listingActionMessage'") == 2
+    assert page.text.count("window.location.reload()") == 1
+    assert page.text.count("sessionStorage.setItem('listingActionMessage'") == 1
     assert "sessionStorage.getItem('listingActionMessage')" in page.text
     assert "sessionStorage.removeItem('listingActionMessage')" in page.text
     assert "showMessage(pendingMessage, 'success')" in page.text
     assert (
-        "sessionStorage.setItem('listingActionMessage', "
-        "'Listing updated and sent for admin review.')"
-    ) in page.text
-    assert (
-        "sessionStorage.setItem('listingActionMessage', "
-        "'Deletion request sent. The listing stays visible until an admin approves it.')"
-    ) in page.text
-    for block in re.findall(r"\.catch\(function \(\) \{(.*?)\}\);", page.text, re.DOTALL):
-        assert "reload" not in block
-        assert "showMessage(" in block
+        "sessionStorage.setItem('listingActionMessage', successMessage)" in page.text
+    )
+    assert "showMessage(await errorMessage(response, fallback), 'danger')" in page.text
+    assert "'X-CSRF-Token': csrfToken" in page.text
+    assert "credentials: 'same-origin'" in page.text
+    assert "Your session has expired. Please sign in again." in page.text
+    assert "Your security token expired. Reload the page and try again." in page.text
