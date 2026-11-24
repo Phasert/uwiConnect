@@ -114,6 +114,12 @@
     message.className = 'alert alert-' + type;
   }
 
+  const pendingMessage = sessionStorage.getItem('listingActionMessage');
+  if (pendingMessage) {
+    sessionStorage.removeItem('listingActionMessage');
+    showMessage(pendingMessage, 'success');
+  }
+
   document.querySelectorAll('[data-edit-id]').forEach(function (button) {
     button.addEventListener('click', function () {
       editId = button.dataset.editId;
@@ -151,8 +157,8 @@
         if (!response.ok) {
           throw new Error('Request failed');
         }
-        panel.classList.add('d-none');
-        showMessage('Listing updated and sent for admin review.', 'success');
+        sessionStorage.setItem('listingActionMessage', 'Listing updated and sent for admin review.');
+        window.location.reload();
       })
       .catch(function () {
         showMessage('Could not update this listing. The listing service may be unavailable.', 'danger');
@@ -172,7 +178,8 @@
           if (!response.ok) {
             throw new Error('Request failed');
           }
-          showMessage('Deletion request sent. The listing stays visible until an admin approves it.', 'success');
+          sessionStorage.setItem('listingActionMessage', 'Deletion request sent. The listing stays visible until an admin approves it.');
+          window.location.reload();
         })
         .catch(function () {
           showMessage('Could not request deletion. The listing service may be unavailable.', 'danger');
