@@ -2,8 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.main import app
 from app.database import engine
+from app.main import app
 from app.models.user import User
 from app.seed import seed
 from app.services.accounts import (
@@ -14,7 +14,6 @@ from app.services.accounts import (
     verify_email,
 )
 from app.utilities.security import encrypt_password
-
 
 client = TestClient(app)
 
@@ -92,6 +91,8 @@ def test_uppercase_registration_stores_lowercase_email() -> None:
             "email": "New.Student@MY.UWI.EDU",
             "password": "new-password",
             "display_name": "New Student",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -137,6 +138,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "Duplicate.Student@uwi.edu",
             "password": "first-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     second = client.post(
@@ -144,6 +147,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "duplicate.student@UWI.EDU",
             "password": "second-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -158,6 +163,8 @@ def test_login_accepts_different_email_capitalization() -> None:
         json={
             "email": "Case.Login@uwi.edu",
             "password": "case-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     assert registered.status_code == 200
@@ -217,6 +224,8 @@ def test_invalid_institutional_email_registration_is_rejected(email: str) -> Non
         json={
             "email": email,
             "password": "invalid-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 

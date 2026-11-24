@@ -157,6 +157,8 @@ def test_revision_request_rejects_wrong_owner_status_invalid_and_duplicate():
             "email": "other.revision@my.uwi.edu",
             "password": "other-dev",
             "display_name": "Other Alum",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     ).json()["user"]
     assert client.post(

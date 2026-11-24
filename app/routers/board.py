@@ -23,6 +23,9 @@ class RegisterBody(BaseModel):
     email: str
     password: str
     display_name: str = "Alumni"
+    programme: str
+    faculty: str | None = None
+    department: str | None = None
 
 
 class ListingBody(BaseModel):
@@ -77,7 +80,14 @@ def login(body: LoginBody) -> dict[str, Any]:
 
 @router.post("/auth/register")
 def register(body: RegisterBody) -> dict[str, Any]:
-    result = accounts.register(body.email, body.password, body.display_name)
+    result = accounts.register(
+        body.email,
+        body.password,
+        body.display_name,
+        body.programme,
+        body.faculty,
+        body.department,
+    )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result

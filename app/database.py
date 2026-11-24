@@ -124,6 +124,34 @@ def _ensure_listing_detail_columns() -> None:
                 conn.execute(text(f"ALTER TABLE listing ADD COLUMN {column} VARCHAR"))
 
 
+def _ensure_user_account_columns() -> None:
+    inspector = inspect(engine)
+    if "user" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("user")}
+    text_columns = ("programme", "faculty", "department")
+    for column in text_columns:
+        if column not in columns:
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE "user" ADD COLUMN {column} VARCHAR'))
+    if "account_active" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE "user" ADD COLUMN account_active '
+                    "BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )
+    if "account_revoked" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE "user" ADD COLUMN account_revoked '
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+
+
 def create_db_and_tables() -> None:
     importlib.import_module("app.models")
 
@@ -133,6 +161,7 @@ def create_db_and_tables() -> None:
     _ensure_listing_rejection_reason_column()
     _ensure_listing_deletion_requested_column()
     _ensure_listing_detail_columns()
+    _ensure_user_account_columns()
 
 
 def drop_all() -> None:
