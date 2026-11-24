@@ -8,7 +8,6 @@ from app.database import engine
 from app.main import app
 from app.models.notification import Notification
 from app.seed import seed
-from app.services import board_auth
 from tests.listing_auth_helpers import login as authenticate
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
@@ -111,7 +110,7 @@ def test_script_uses_cookie_auth_sse_and_id_dedupe():
 
 
 def test_merged_inbox_shape_still_has_no_read_status(alumni_client):
-    user_id = board_auth.login(ALUMNI_EMAIL, ALUMNI_PASSWORD)["id"]
+    user_id = authenticate(alumni_client, ALUMNI_EMAIL, ALUMNI_PASSWORD)["id"]
     with Session(engine) as session:
         session.add(
             Notification(

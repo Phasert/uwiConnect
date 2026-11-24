@@ -1,8 +1,7 @@
 """Persist published events as in-app notifications.
 
-Audience selection is currently every verified alumni account. Academic
-relevance matching is not implemented. Revoked-account exclusion is pending
-the agreed account model, so no speculative attribute checks are applied here.
+Audience selection is delegated to the shared recipient selector so website
+and email delivery apply the same eligibility and qualification rules.
 """
 
 from __future__ import annotations
@@ -10,15 +9,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.database import _NOTIFICATION_EVENT_INDEX as USER_EVENT_INDEX
 from app.database import engine
 from app.models.notification import Notification
-from app.models.user import User
-from app.services.accounts import require_verified_alumni
-from app.services.board_auth import public_user
 from app.services.observer import NotificationEvent, notification_publisher
+from app.services.recipient_selection import select_recipients
 
 _PG_UNIQUE_VIOLATION = "23505"
 _SQLITE_DUPLICATE_MESSAGE = (
@@ -49,26 +46,19 @@ def _is_duplicate_notification(exc: IntegrityError) -> bool:
 class WebsiteNotificationObserver:
     def __call__(self, event: NotificationEvent) -> None:
         with Session(engine) as session:
-            users = session.exec(
-                select(User).where(User.role == "alumni", User.email_verified == 1)
-            ).all()
-            recipients = [
-                (user.id, event.event_type, event.message or event.event_type)
-                for user in users
-                if require_verified_alumni(public_user(user)) is None
-            ]
+            recipients = select_recipients(event, session)
 
         created_at = _now()
-        for user_id, event_type, message in recipients:
+        for user in recipients:
             # One transaction per recipient keeps a duplicate conflict from
             # rolling back delivery to everyone else in the audience.
             try:
                 with Session(engine) as write_session:
                     write_session.add(
                         Notification(
-                            user_id=user_id,
-                            event_type=event_type,
-                            message=message,
+                            user_id=user["id"],
+                            event_type=event.event_type,
+                            message=event.message or event.event_type,
                             created_at=created_at,
                             event_id=event.event_id,
                         )
