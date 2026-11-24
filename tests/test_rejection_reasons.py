@@ -6,6 +6,7 @@ from app import database as database_module
 from app.main import app
 from app.seed import seed
 from app.services import board_auth, boards
+from tests.listing_test_helpers import complete_listing_payload
 
 
 def setup_module() -> None:
@@ -26,7 +27,9 @@ def _login_api(email: str, password: str) -> dict:
 def _submit(user_id: int, kind: str, title: str) -> int:
     response = client.post(
         "/api/boards/listings",
-        json={"kind": kind, "title": title, "body": "Test body"},
+        json=complete_listing_payload(
+            {"kind": kind, "title": title, "body": "Test body"}
+        ),
         headers={"X-User-Id": str(user_id)},
     )
     assert response.status_code == 200

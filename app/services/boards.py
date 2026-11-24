@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from sqlalchemy import or_
@@ -23,8 +23,70 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+_DETAIL_FIELDS = (
+    "company_name",
+    "location",
+    "application_instructions",
+    "application_deadline",
+    "faculty",
+    "department",
+    "event_date",
+    "event_time",
+    "category",
+    "registration_information",
+)
+
+
+def _clean_listing_data(data: dict[str, Any]) -> dict[str, Any]:
+    cleaned = data.copy()
+    for field in ("title", "body", *_DETAIL_FIELDS):
+        value = cleaned.get(field)
+        if isinstance(value, str):
+            cleaned[field] = value.strip() or None
+    return cleaned
+
+
+def _validate_listing_data(data: dict[str, Any]) -> str | None:
+    kind = data.get("kind")
+    if kind not in {"job", "event"}:
+        return "kind must be job|event"
+    if not data.get("title") or not data.get("body"):
+        return "title and body are required"
+
+    if kind == "job":
+        for field in ("company_name", "location", "application_instructions"):
+            if not data.get(field):
+                return f"{field} is required for job listings"
+        if not data.get("faculty") and not data.get("department"):
+            return "faculty or department is required for job listings"
+        deadline = data.get("application_deadline")
+        if deadline:
+            try:
+                date.fromisoformat(deadline)
+            except ValueError:
+                return "application_deadline must use YYYY-MM-DD"
+    else:
+        for field in ("event_date", "event_time", "location"):
+            if not data.get(field):
+                return f"{field} is required for event listings"
+        try:
+            date.fromisoformat(data["event_date"])
+        except ValueError:
+            return "event_date must use YYYY-MM-DD"
+        try:
+            time.fromisoformat(data["event_time"])
+        except ValueError:
+            return "event_time must use HH:MM or HH:MM:SS"
+    return None
+
+
 def browse_published(
-    *, kind: str | None = None, q: str | None = None
+    *,
+    kind: str | None = None,
+    q: str | None = None,
+    category: str | None = None,
+    faculty: str | None = None,
+    department: str | None = None,
 ) -> list[dict[str, Any]]:
     with Session(engine) as session:
         stmt = select(Listing).where(Listing.status == "published")
@@ -35,12 +97,24 @@ def browse_published(
             stmt = stmt.where(
                 or_(Listing.title.ilike(pattern), Listing.body.ilike(pattern))
             )
+        if category:
+            stmt = stmt.where(
+                or_(
+                    Listing.category.ilike(category),
+                    Listing.faculty.ilike(category),
+                    Listing.department.ilike(category),
+                )
+            )
+        if faculty:
+            stmt = stmt.where(Listing.faculty.ilike(faculty))
+        if department:
+            stmt = stmt.where(Listing.department.ilike(department))
         stmt = stmt.order_by(Listing.id.desc())
         return [r.model_dump() for r in session.exec(stmt).all()]
 
 
 def submit_listing(
-    author_id: int, *, kind: str, title: str, body: str
+    author_id: int, *, kind: str, title: str, body: str, **details: str | None
 ) -> dict[str, Any]:
     user = get_user(author_id)
     err = require_verified_alumni(user)
@@ -48,19 +122,18 @@ def submit_listing(
         err = None
     if err:
         return {"ok": False, "error": err}
-    if kind not in {"job", "event"}:
-        return {"ok": False, "error": "kind must be job|event"}
-    if not title.strip() or not body.strip():
-        return {"ok": False, "error": "title and body are required"}
+    data = _clean_listing_data(
+        {"kind": kind, "title": title, "body": body, **details}
+    )
+    validation_error = _validate_listing_data(data)
+    if validation_error:
+        return {"ok": False, "error": validation_error}
 
-    status = "pending"
     with Session(engine) as session:
         listing = Listing(
             author_id=author_id,
-            kind=kind,
-            title=title,
-            body=body,
-            status=status,
+            **data,
+            status="pending",
             created_at=_now(),
         )
         session.add(listing)
@@ -74,10 +147,7 @@ def submit_listing(
 def edit_listing(
     author_id: int,
     listing_id: int,
-    *,
-    kind: str,
-    title: str,
-    body: str,
+    updates: dict[str, Any],
 ) -> dict[str, Any]:
     with Session(engine) as session:
         listing = session.get(Listing, listing_id)
@@ -89,14 +159,30 @@ def edit_listing(
             return {"ok": False, "error": "only pending or rejected listings can be edited"}
         if listing.deletion_requested:
             return {"ok": False, "error": "listing has a pending deletion request"}
-        if kind not in {"job", "event"}:
-            return {"ok": False, "error": "kind must be job|event"}
-        if not title.strip() or not body.strip():
-            return {"ok": False, "error": "title and body are required"}
+        data = listing.model_dump()
+        data.update(updates)
+        if data.get("kind") == "job":
+            for field in ("event_date", "event_time", "category", "registration_information"):
+                data[field] = None
+        elif data.get("kind") == "event":
+            for field in (
+                "company_name",
+                "application_instructions",
+                "application_deadline",
+                "faculty",
+                "department",
+            ):
+                data[field] = None
+        data = _clean_listing_data(data)
+        validation_error = _validate_listing_data(data)
+        if validation_error:
+            return {"ok": False, "error": validation_error}
 
-        listing.kind = kind
-        listing.title = title.strip()
-        listing.body = body.strip()
+        listing.kind = data["kind"]
+        listing.title = data["title"]
+        listing.body = data["body"]
+        for field in _DETAIL_FIELDS:
+            setattr(listing, field, data.get(field))
         listing.status = "pending"
         listing.rejection_reason = None
         session.add(listing)
