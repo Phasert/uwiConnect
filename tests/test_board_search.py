@@ -218,6 +218,19 @@ def test_existing_browse_route_shape_is_unchanged():
     assert "listings" in filtered.json()
 
 
+def test_browse_boards_link_uses_server_rendered_page():
+    _web_login()
+
+    page = client.get("/app")
+
+    assert page.status_code == 200
+    assert (
+        'class="secondary" href="http://testserver/app">Browse boards</a>'
+        in page.text
+    )
+    assert 'href="/api/boards">Browse boards</a>' not in page.text
+
+
 def test_app_renders_cards_and_preserves_search_filters():
     admin = _login("admin@uwi.edu", "admin-dev")
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
