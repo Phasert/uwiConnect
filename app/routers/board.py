@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import Annotated, Any, NamedTuple
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlmodel import Session
 
+from app.database import engine
 from app.dependencies import AdminDep, AuthDep, get_csrf_protection
-from app.services import accounts, boards, campaigns, notifications
+from app.dependencies.auth import get_current_user
+from app.services import accounts, boards, campaigns, notification_stream, notifications
 from app.services import board_auth as auth
 
 router = APIRouter(tags=["uwi-connect"])
@@ -72,6 +77,68 @@ def _actor_id(x_user_id: str | None) -> int:
         return int(x_user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="X-User-Id must be int") from exc
+
+
+_MAX_SSE_CURSOR = 2**63 - 1
+_MAX_SSE_CURSOR_DIGITS = len(str(_MAX_SSE_CURSOR))
+_INVALID_CURSOR_DETAIL = "Last-Event-ID must be a positive integer"
+
+
+def _parse_last_event_id(value: str | None) -> int:
+    if value is None:
+        return 0
+    raw = value.strip()
+    if (
+        not raw
+        or len(raw) > _MAX_SSE_CURSOR_DIGITS
+        or not raw.isascii()
+        or not raw.isdecimal()
+    ):
+        raise HTTPException(status_code=400, detail=_INVALID_CURSOR_DETAIL)
+    try:
+        cursor = int(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=_INVALID_CURSOR_DETAIL) from exc
+    if cursor <= 0 or cursor > _MAX_SSE_CURSOR:
+        raise HTTPException(status_code=400, detail=_INVALID_CURSOR_DETAIL)
+    return cursor
+
+
+async def _validate_stream_cursor(*, user_id: int, value: str | None) -> int:
+    cursor = _parse_last_event_id(value)
+    if cursor:
+        high_water = await asyncio.to_thread(
+            notification_stream.user_notification_high_water_mark,
+            user_id=user_id,
+        )
+        if cursor > high_water:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Last-Event-ID is ahead of notification stream; "
+                    "resynchronise from /api/notifications"
+                ),
+            )
+    return cursor
+
+
+class _StreamIdentity(NamedTuple):
+    user_id: int
+    expires_at: float | None
+
+
+async def _stream_identity(request: Request) -> _StreamIdentity:
+    """Authenticate once, then close the dependency's database session."""
+    token = request.cookies.get("access_token")
+    with Session(engine) as session:
+        user = await get_current_user(request, session)
+        user_id = user.id
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return _StreamIdentity(user_id, notification_stream.token_expiry_timestamp(token))
+
+
+StreamIdentityDep = Annotated[_StreamIdentity, Depends(_stream_identity)]
 
 
 @router.post("/auth/login")
@@ -337,5 +404,30 @@ def schedule_campaign(
 
 
 @router.get("/notifications")
-def my_notifications(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    return {"notifications": notifications.inbox(_actor_id(x_user_id))}
+def my_notifications(user: AuthDep) -> dict[str, Any]:
+    return {"notifications": notifications.inbox(user.id)}
+
+
+@router.get("/notifications/stream")
+async def stream_notifications(
+    request: Request,
+    identity: StreamIdentityDep,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+) -> StreamingResponse:
+    cursor = await _validate_stream_cursor(
+        user_id=identity.user_id, value=last_event_id
+    )
+    return StreamingResponse(
+        notification_stream.iter_notification_events(
+            request=request,
+            user_id=identity.user_id,
+            cursor=cursor,
+            expires_at=identity.expires_at,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

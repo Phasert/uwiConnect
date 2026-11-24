@@ -73,7 +73,7 @@ def _reject(user_id: int, listing_id: int):
 
 
 def _inbox(user_id: int) -> list:
-    r = client.get("/api/notifications", headers={"X-User-Id": str(user_id)})
+    r = client.get("/api/notifications", headers=auth_headers(client, user_id))
     assert r.status_code == 200
     return r.json()["notifications"]
 
