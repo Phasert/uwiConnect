@@ -6,6 +6,7 @@ from sqlmodel import create_engine
 from app import database as database_module
 from app.main import app
 from app.seed import seed
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -17,25 +18,21 @@ client = TestClient(app)
 
 
 def _login(email: str, password: str = "alumni-dev") -> dict:
-    response = client.post(
-        "/api/auth/login", json={"email": email, "password": password}
-    )
-    assert response.status_code == 200
-    return response.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, payload: dict):
     return client.post(
         "/api/boards/listings",
         json=payload,
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
 def _publish(admin_id: int, listing_id: int) -> None:
     response = client.post(
         f"/api/admin/listings/{listing_id}/publish",
-        headers={"X-User-Id": str(admin_id)},
+        headers=auth_headers(client, admin_id),
     )
     assert response.status_code == 200
 
@@ -149,7 +146,7 @@ def test_edit_updates_new_fields_and_preserves_omitted_values():
             "body": "Updated body",
             "company_name": "Updated Company",
         },
-        headers={"X-User-Id": str(alum["id"])},
+        headers=auth_headers(client, alum["id"]),
     )
 
     assert response.status_code == 200

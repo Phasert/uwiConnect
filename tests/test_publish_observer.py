@@ -12,6 +12,7 @@ from app.services.website_notifications import (
     register_website_observer,
     website_notification_observer,
 )
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -44,16 +45,14 @@ def events():
 
 
 def _login(email: str, password: str) -> dict:
-    r = client.post("/api/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200
-    return r.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, payload: dict) -> dict:
     r = client.post(
         "/api/boards/listings",
         json=complete_listing_payload(payload),
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert r.status_code == 200
     return r.json()
@@ -62,14 +61,14 @@ def _submit(user_id: int, payload: dict) -> dict:
 def _publish(user_id: int, listing_id: int):
     return client.post(
         f"/api/admin/listings/{listing_id}/publish",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
 def _reject(user_id: int, listing_id: int):
     return client.post(
         f"/api/admin/listings/{listing_id}/reject",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
