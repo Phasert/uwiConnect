@@ -125,6 +125,7 @@ def test_alumni_navigation_shows_dashboard_bell_and_logout():
     assert page.status_code == 200
     assert re.search(r'href="[^"]*/app/dashboard"', page.text) is not None
     assert 'id="notificationMenu"' in page.text
+    assert 'data-stream-url="/api/notifications/stream"' in page.text
     assert re.search(r'action="[^"]*/logout"', page.text) is not None
     assert 'name="csrf_token"' in page.text
     assert page.text.count("notifications.js") == 1
