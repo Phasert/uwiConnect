@@ -109,6 +109,8 @@ def test_public_registration_remains_available_without_jwt(
             "username": username,
             "email": f"{username}@uwi.edu",
             "password": "csrf-registration-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
             "csrf_token": csrf_token,
         },
         follow_redirects=False,

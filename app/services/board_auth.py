@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.models.user import User
+from app.services.alumni_eligibility import is_account_accessible
 from app.utilities.security import verify_password
 
 
@@ -32,7 +33,11 @@ def login(email: str, password: str) -> dict[str, Any] | None:
         user = session.exec(
             select(User).where(func.lower(User.email) == normalized_email)
         ).one_or_none()
-        if user is None or not verify_password(password, user.password):
+        if (
+            user is None
+            or not is_account_accessible(user)
+            or not verify_password(password, user.password)
+        ):
             return None
         return public_user(user)
 

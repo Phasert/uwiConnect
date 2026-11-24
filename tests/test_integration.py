@@ -12,14 +12,16 @@ def test_save_password(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
 
-    created = service.register_user("alice", "Alice@UWI.EDU", "secret")
+    created = service.register_user(
+        "alice", "Alice@UWI.EDU", "secret", "Computer Science", "FST"
+    )
     saved = repository.get_by_username("alice")
 
     assert saved is not None
     assert created.id == saved.id
     assert saved.username == "alice"
     assert saved.email == "alice@uwi.edu"
-    assert saved.role == "regular_user"
+    assert saved.role == "alumni"
     assert saved.password != "secret"
     assert verify_password("secret", saved.password)
 
@@ -27,7 +29,9 @@ def test_save_password(test_session):
 def test_login(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
-    service.register_user("alice", "Alice@UWI.EDU", "secret")
+    service.register_user(
+        "alice", "Alice@UWI.EDU", "secret", "Computer Science", "FST"
+    )
 
     token = service.authenticate_user("alice", "secret")
     settings = get_settings()
@@ -38,13 +42,15 @@ def test_login(test_session):
     )
 
     assert payload["sub"] == str(repository.get_by_username("alice").id)
-    assert payload["role"] == "regular_user"
+    assert payload["role"] == "alumni"
 
 
 def test_register_user(test_session):
     repository = UserRepository(test_session)
     auth_service = AuthService(repository)
-    auth_service.register_user("alice", "Alice@MY.UWI.EDU", "secret")
+    auth_service.register_user(
+        "alice", "Alice@MY.UWI.EDU", "secret", "Computer Science", "FST"
+    )
 
     users = UserService(repository).get_all_users()
 
@@ -58,23 +64,29 @@ def test_ssr_registration_rejects_invalid_email(test_session, email):
     service = AuthService(UserRepository(test_session))
 
     with pytest.raises(ValueError, match="approved UWI domain"):
-        service.register_user("alice", email, "secret")
+        service.register_user("alice", email, "secret", "Computer Science", "FST")
 
 
 def test_ssr_registration_rejects_duplicate_case_insensitively(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
 
-    service.register_user("alice", "Alice@UWI.EDU", "secret")
+    service.register_user(
+        "alice", "Alice@UWI.EDU", "secret", "Computer Science", "FST"
+    )
 
     with pytest.raises(ValueError, match="email already registered"):
-        service.register_user("other", "ALICE@uwi.edu", "other-secret")
+        service.register_user(
+            "other", "ALICE@uwi.edu", "other-secret", "Computer Science", "FST"
+        )
 
 
 def test_ssr_authenticate_accepts_username_unchanged(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
-    service.register_user("alice", "Alice@MY.UWI.EDU", "secret")
+    service.register_user(
+        "alice", "Alice@MY.UWI.EDU", "secret", "Computer Science", "FST"
+    )
 
     token = service.authenticate_user("alice", "secret")
 

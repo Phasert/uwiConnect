@@ -20,6 +20,8 @@ def _register_other_alumnus() -> dict:
             "email": "listing.security@my.uwi.edu",
             "password": "security-dev",
             "display_name": "Security Alum",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     assert response.status_code == 200
