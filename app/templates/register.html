@@ -31,6 +31,19 @@
         <label class="form-label" for="password">Password</label>
         <input class="form-control" type="password" id="password" name="password" required>
       </div>
+      <div class="mb-3">
+        <label class="form-label" for="programme">Completed degree or programme</label>
+        <input class="form-control" type="text" id="programme" name="programme" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="faculty">Faculty</label>
+        <input class="form-control" type="text" id="faculty" name="faculty">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="department">Department</label>
+        <input class="form-control" type="text" id="department" name="department">
+        <div class="form-text">Provide a faculty or department.</div>
+      </div>
       <div class="d-grid gap-2 mb-3">
         <button class="btn btn-primary btn-lg" type="submit">Register</button>
         <a class="btn btn-outline-secondary" href="{{ url_for('login_view') }}">Back to sign in</a>

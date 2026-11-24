@@ -1,9 +1,12 @@
+import smtplib
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.main import app
 from app.database import engine
+from app.main import app
 from app.models.user import User
 from app.seed import seed
 from app.services.accounts import (
@@ -15,8 +18,15 @@ from app.services.accounts import (
 )
 from app.utilities.security import encrypt_password
 
-
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def prevent_real_smtp_delivery(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.email_service.SMTPEmailService.send_email",
+        lambda *_args, **_kwargs: None,
+    )
 
 
 def setup_module() -> None:
@@ -92,6 +102,8 @@ def test_uppercase_registration_stores_lowercase_email() -> None:
             "email": "New.Student@MY.UWI.EDU",
             "password": "new-password",
             "display_name": "New Student",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -137,6 +149,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "Duplicate.Student@uwi.edu",
             "password": "first-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     second = client.post(
@@ -144,6 +158,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "duplicate.student@UWI.EDU",
             "password": "second-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -152,12 +168,74 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
     assert second.json()["detail"] == "email already registered"
 
 
+def test_registration_sends_verification_link_that_can_be_consumed(
+    monkeypatch,
+) -> None:
+    deliveries = []
+
+    def capture_email(_service, recipient, subject, body, **kwargs):
+        deliveries.append((recipient, subject, body, kwargs))
+
+    monkeypatch.setattr(
+        "app.services.email_service.SMTPEmailService.send_email",
+        capture_email,
+    )
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "scheduled.verify@uwi.edu",
+            "password": "verify-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(deliveries) == 1
+    recipient, subject, body, kwargs = deliveries[0]
+    assert recipient == "scheduled.verify@uwi.edu"
+    assert subject == "Verify your UWI Connect email address"
+    assert kwargs["html_body"]
+    token = parse_qs(urlsplit(body.splitlines()[2]).query)["token"][0]
+    response = client.get("/api/auth/verify-email", params={"token": token})
+
+    assert response.status_code == 200
+    with Session(engine) as session:
+        user = session.get(User, response.json()["user"]["id"])
+        assert user is not None
+        assert user.email_verified == 1
+
+
+def test_smtp_failure_does_not_fail_registration(monkeypatch) -> None:
+    def fail_delivery(*_args, **_kwargs):
+        raise smtplib.SMTPAuthenticationError(535, b"authentication failed")
+
+    monkeypatch.setattr(
+        "app.services.email_service.SMTPEmailService.send_email", fail_delivery
+    )
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "mail.failure@uwi.edu",
+            "password": "verify-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email_verified"] == 0
+
+
 def test_login_accepts_different_email_capitalization() -> None:
     registered = client.post(
         "/api/auth/register",
         json={
             "email": "Case.Login@uwi.edu",
             "password": "case-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     assert registered.status_code == 200
@@ -217,6 +295,8 @@ def test_invalid_institutional_email_registration_is_rejected(email: str) -> Non
         json={
             "email": email,
             "password": "invalid-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 

@@ -98,8 +98,12 @@ def test_csrf_token_endpoint_works_without_jwt(client: TestClient) -> None:
 
 
 def test_public_registration_remains_available_without_jwt(
-    client: TestClient,
+    client: TestClient, monkeypatch
 ) -> None:
+    monkeypatch.setattr(
+        "app.services.email_service.SMTPEmailService.send_email",
+        lambda *_args, **_kwargs: None,
+    )
     csrf_token = csrf_token_from_html(client.get("/register").text)
     username = f"csrf-{uuid4().hex}"
 
@@ -109,6 +113,8 @@ def test_public_registration_remains_available_without_jwt(
             "username": username,
             "email": f"{username}@uwi.edu",
             "password": "csrf-registration-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
             "csrf_token": csrf_token,
         },
         follow_redirects=False,

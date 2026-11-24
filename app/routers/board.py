@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.dependencies import AdminDep, AuthDep, get_csrf_protection
@@ -23,6 +23,13 @@ class RegisterBody(BaseModel):
     email: str
     password: str
     display_name: str = "Alumni"
+    programme: str
+    faculty: str | None = None
+    department: str | None = None
+
+
+class VerifyEmailBody(BaseModel):
+    token: str
 
 
 class ListingBody(BaseModel):
@@ -76,16 +83,38 @@ def login(body: LoginBody) -> dict[str, Any]:
 
 
 @router.post("/auth/register")
-def register(body: RegisterBody) -> dict[str, Any]:
-    result = accounts.register(body.email, body.password, body.display_name)
+def register(
+    body: RegisterBody,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    result = accounts.register(
+        body.email,
+        body.password,
+        body.display_name,
+        body.programme,
+        body.faculty,
+        body.department,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    background_tasks.add_task(
+        accounts.send_verification_email,
+        result["user"]["id"],
+    )
+    return result
+
+
+@router.get("/auth/verify-email")
+def verify_email_by_link(token: str) -> dict[str, Any]:
+    result = accounts.verify_email_token(token)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
 
 
 @router.post("/auth/verify-email")
-def verify_email(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    result = accounts.verify_email(_actor_id(x_user_id))
+def verify_email(body: VerifyEmailBody) -> dict[str, Any]:
+    result = accounts.verify_email_token(body.token)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result

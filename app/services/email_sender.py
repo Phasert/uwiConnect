@@ -99,11 +99,14 @@ class SmtpConfig:
     @classmethod
     def from_settings(cls, settings: Any | None = None) -> SmtpConfig:
         values = get_settings() if settings is None else settings
+        password = getattr(values, "smtp_password", "")
+        if hasattr(password, "get_secret_value"):
+            password = password.get_secret_value()
         return cls(
             host=getattr(values, "smtp_host", ""),
             port=getattr(values, "smtp_port", 587),
             username=getattr(values, "smtp_username", ""),
-            password=getattr(values, "smtp_password", ""),
+            password=password,
             from_address=getattr(values, "smtp_from_address", ""),
             timeout=getattr(values, "smtp_timeout", 10.0),
             use_implicit_tls=getattr(values, "smtp_use_implicit_tls", False),

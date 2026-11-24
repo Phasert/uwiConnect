@@ -6,7 +6,7 @@ from app.seed import seed
 from app.services import board_auth, boards, campaigns
 from app.services.website_notifications import register_website_observer
 from tests.campaign_test_helpers import isolate_publisher
-from tests.listing_auth_helpers import login as authenticate
+from tests.csrf_test_helpers import csrf_token_from_html
 
 ADMIN_EMAIL = "admin@uwi.edu"
 ADMIN_PASSWORD = "admin-dev"
@@ -21,7 +21,19 @@ def seeded_database():
 
 def _login(email, password):
     client = TestClient(app)
-    authenticate(client, email, password)
+    csrf_token = csrf_token_from_html(client.get("/login").text)
+    response = client.post(
+        "/login",
+        data={
+            "username": email,
+            "password": password,
+            "csrf_token": csrf_token,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    csrf_token = client.get("/api/auth/csrf").json()["csrf_token"]
+    client.headers.update({"X-CSRF-Token": csrf_token})
     return client
 
 
@@ -78,9 +90,7 @@ def _submit_listing(client, kind, title, **extra):
 
 
 def _request_deletion(client, listing_id):
-    response = client.post(
-        f"/api/boards/listings/{listing_id}/deletion-request",
-    )
+    response = client.post(f"/api/boards/listings/{listing_id}/deletion-request")
     assert response.status_code == 200
 
 
