@@ -1,58 +1,252 @@
 {% extends "base.html" %}
-{% block title %}CampusWire{% endblock %}
+{% block title %}UWI Connect · Alumni Opportunities and Events{% endblock %}
 
 {% block content %}
 <div class="landing">
-  <div class="netfield" aria-hidden="true"></div>
-  <div class="landing-bands" aria-hidden="true"></div>
-  <div class="wave-stack" aria-hidden="true">
-    <svg class="wave wave-a" viewBox="0 0 2880 200" preserveAspectRatio="none">
-      <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100 L2880,200 L0,200 Z" />
-    </svg>
-    <svg class="wave wave-b" viewBox="0 0 2880 200" preserveAspectRatio="none">
-      <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100 L2880,200 L0,200 Z" />
-    </svg>
-    <svg class="wave wave-c" viewBox="0 0 2880 200" preserveAspectRatio="none">
-      <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100" />
-    </svg>
-  </div>
-
   <header class="landing-nav">
-    <a class="brand-wordmark" href="{{ url_for('index_view') }}">CampusWire</a>
-    <div class="landing-nav-actions">
-      {% if user_logged_in %}
-      <a class="btn-landing btn-landing-ghost" href="{{ app_home }}">Open boards</a>
-      <a class="btn-landing btn-landing-ghost" href="{{ url_for('logout') }}">Sign out</a>
-      {% else %}
-      <a class="btn-landing btn-landing-ghost" href="{{ url_for('login_view') }}">Sign in</a>
-      <a class="btn-landing btn-landing-primary" href="{{ url_for('register_view') }}">Join</a>
-      {% endif %}
-    </div>
+    <nav class="navbar navbar-expand-md landing-navbar" aria-label="Main navigation">
+      <div class="container-xxl">
+        <a class="navbar-brand brand-wordmark" href="{{ url_for('index_view') }}">UWI Connect</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#landingNavLinks"
+                aria-controls="landingNavLinks" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="landingNavLinks">
+          <ul class="navbar-nav ms-auto me-md-3">
+            {% if user_logged_in %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('user_home_view') }}?kind=job">Browse jobs</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('user_home_view') }}?kind=event">Explore events</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('user_dashboard_view') }}">My submissions</a></li>
+            {% if is_admin %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_home_view') }}">Admin dashboard</a></li>
+            {% endif %}
+            {% else %}
+            <li class="nav-item"><a class="nav-link" href="/api/boards?kind=job">Browse jobs</a></li>
+            <li class="nav-item"><a class="nav-link" href="/api/boards?kind=event">Explore events</a></li>
+            {% endif %}
+          </ul>
+          <div class="landing-nav-actions">
+            {% if user_logged_in %}
+            {% include "partials/notification-bell.html" %}
+            <a class="btn-landing btn-landing-ghost" href="{{ app_home }}">Dashboard</a>
+            <form method="post" action="{{ url_for('logout') }}" class="m-0">
+              <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+              <button type="submit" class="btn-landing btn-landing-ghost">Sign out</button>
+            </form>
+            {% else %}
+            <a class="btn-landing btn-landing-ghost" href="{{ url_for('login_view') }}">Sign in</a>
+            <a class="btn-landing btn-landing-primary" href="{{ url_for('register_view') }}">Join UWI Connect</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </nav>
   </header>
 
-  <main class="landing-hero">
-    <h1 class="brand-wordmark">CampusWire</h1>
-    <p class="landing-lead">
-      Connect alumni boards and campaigns in one place, so every opportunity and announcement reaches the right graduates.
-    </p>
-    <div class="landing-cta">
-      {% if user_logged_in %}
-      <a class="btn-landing btn-landing-primary" href="{{ app_home }}">Continue</a>
-      {% else %}
-      <a class="btn-landing btn-landing-primary" href="{{ url_for('register_view') }}">Create account</a>
-      <a class="btn-landing btn-landing-ghost" href="{{ url_for('login_view') }}">Sign in</a>
-      {% endif %}
-    </div>
+  <main class="landing-main">
+    <section class="landing-hero" aria-labelledby="heroHeading">
+      <div class="netfield" aria-hidden="true"></div>
+      <div class="landing-bands" aria-hidden="true"></div>
+      <div class="wave-stack" aria-hidden="true">
+        <svg class="wave wave-a" viewBox="0 0 2880 200" preserveAspectRatio="none">
+          <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100 L2880,200 L0,200 Z" />
+        </svg>
+        <svg class="wave wave-b" viewBox="0 0 2880 200" preserveAspectRatio="none">
+          <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100 L2880,200 L0,200 Z" />
+        </svg>
+        <svg class="wave wave-c" viewBox="0 0 2880 200" preserveAspectRatio="none">
+          <path d="M0,100 C240,40 480,40 720,100 S1200,160 1440,100 C1680,40 1920,40 2160,100 S2640,160 2880,100" />
+        </svg>
+      </div>
+      <div class="container-xxl landing-hero-inner">
+        <p class="landing-eyebrow">For the UWI alumni community</p>
+        <h1 id="heroHeading">Connect with Opportunities. <span class="landing-hero-line">Stay Connected to UWI.</span></h1>
+        <p class="landing-lead">
+          Discover career opportunities, explore alumni events and stay connected with the UWI alumni community through one platform.
+        </p>
+        <div class="landing-cta">
+          {% if user_logged_in %}
+          <a class="btn-landing btn-landing-primary" href="{{ url_for('user_home_view') }}?kind=job">Browse opportunities</a>
+          <a class="btn-landing btn-landing-ghost" href="{{ url_for('user_home_view') }}?kind=event">Explore events</a>
+          <a class="btn-landing btn-landing-ghost" href="{{ app_home }}">Go to dashboard</a>
+          {% else %}
+          <a class="btn-landing btn-landing-primary" href="/api/boards?kind=job">Browse opportunities</a>
+          <a class="btn-landing btn-landing-ghost" href="/api/boards?kind=event">Explore events</a>
+          <a class="btn-landing btn-landing-ghost" href="{{ url_for('login_view') }}">Sign in</a>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section" id="benefits" aria-labelledby="benefitsHeading">
+      <div class="container-xxl">
+        <h2 id="benefitsHeading" class="landing-section-title">A platform built around alumni opportunities</h2>
+        <p class="landing-section-intro">Discover, share and follow opportunities across the UWI alumni community.</p>
+        <div class="row g-4 mt-1">
+          <div class="col-12 col-md-4">
+            <article class="landing-card p-4 h-100">
+              <svg class="landing-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <rect x="3" y="7" width="18" height="13" rx="2"></rect>
+                <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                <path d="M3 12h18"></path>
+              </svg>
+              <h3 class="h5 mt-3 mb-2">Career Opportunities</h3>
+              <p class="mb-0 text-body-secondary">Discover job listings shared for the alumni community.</p>
+            </article>
+          </div>
+          <div class="col-12 col-md-4">
+            <article class="landing-card p-4 h-100">
+              <svg class="landing-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M8 3v4M16 3v4M3 10h18"></path>
+              </svg>
+              <h3 class="h5 mt-3 mb-2">Alumni Events</h3>
+              <p class="mb-0 text-body-secondary">Explore networking opportunities, university activities and alumni gatherings.</p>
+            </article>
+          </div>
+          <div class="col-12 col-md-4">
+            <article class="landing-card p-4 h-100">
+              <svg class="landing-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <circle cx="9" cy="8" r="3"></circle>
+                <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+                <path d="M16 5.5a3 3 0 0 1 0 5.5M18 20c0-2.2-.8-4.2-2-5.6"></path>
+              </svg>
+              <h3 class="h5 mt-3 mb-2">Community Connections</h3>
+              <p class="mb-0 text-body-secondary">Stay informed about relevant opportunities and developments.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section landing-section-alt" id="how-it-works" aria-labelledby="howHeading">
+      <div class="container-xxl">
+        <h2 id="howHeading" class="landing-section-title">How UWI Connect works</h2>
+        <p class="landing-section-intro">Three steps from signing in to staying informed.</p>
+        <ol class="row g-4 list-unstyled mt-1">
+          <li class="col-12 col-md-4">
+            <div class="landing-card p-4 h-100">
+              <span class="landing-step-number" aria-hidden="true">1</span>
+              <h3 class="h5 mt-3 mb-2">Sign in to your alumni account</h3>
+              <p class="mb-0 text-body-secondary">Use a verified UWI alumni account. Only eligible alumni can submit listings.</p>
+            </div>
+          </li>
+          <li class="col-12 col-md-4">
+            <div class="landing-card p-4 h-100">
+              <span class="landing-step-number" aria-hidden="true">2</span>
+              <h3 class="h5 mt-3 mb-2">Explore available jobs and events</h3>
+              <p class="mb-0 text-body-secondary">Browse opportunities shared for the alumni community.</p>
+            </div>
+          </li>
+          <li class="col-12 col-md-4">
+            <div class="landing-card p-4 h-100">
+              <span class="landing-step-number" aria-hidden="true">3</span>
+              <h3 class="h5 mt-3 mb-2">Share opportunities and stay informed</h3>
+              <p class="mb-0 text-body-secondary">Submit a listing or follow notifications. An administrator reviews every submission before publication.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="landing-section" id="featured" aria-labelledby="featuredHeading">
+      <div class="container-xxl">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-3">
+          <div>
+            <h2 id="featuredHeading" class="landing-section-title">Featured opportunities</h2>
+            <p class="landing-section-intro mb-0">A snapshot of currently published jobs and events.</p>
+          </div>
+          <div class="landing-featured-links">
+            {% if user_logged_in %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('user_home_view') }}?kind=job">All jobs</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('user_home_view') }}?kind=event">All events</a>
+            {% else %}
+            <a class="btn btn-sm btn-outline-primary" href="/api/boards?kind=job">All jobs</a>
+            <a class="btn btn-sm btn-outline-primary" href="/api/boards?kind=event">All events</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="row g-4 mt-1">
+          <div class="col-12 col-lg-6">
+            <h3 class="h5 mb-3">Latest jobs</h3>
+            {% if featured_jobs %}
+            {% for listing in featured_jobs %}
+            <article class="landing-feature-card">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <span class="landing-badge">Job</span>
+                {% if listing.category %}<span class="small text-body-secondary">{{ listing.category }}</span>{% endif %}
+              </div>
+              <h4 class="h6 mt-2 mb-1">{{ listing.title }}</h4>
+              <p class="small text-body-secondary mb-2">
+                {% if listing.company_name %}{{ listing.company_name }}{% endif %}
+                {% if listing.company_name and listing.location %} · {% endif %}
+                {% if listing.location %}{{ listing.location }}{% endif %}
+                {% if listing.application_deadline %} · Apply by {{ listing.application_deadline }}{% endif %}
+              </p>
+              {% if user_logged_in %}
+              <a class="landing-card-link" href="{{ url_for('user_home_view') }}?kind=job">Browse all jobs</a>
+              {% else %}
+              <a class="landing-card-link" href="/api/boards?kind=job">Browse all jobs</a>
+              {% endif %}
+            </article>
+            {% endfor %}
+            {% else %}
+            <p class="landing-empty">No featured job opportunities are available right now. Check back soon.</p>
+            {% endif %}
+          </div>
+          <div class="col-12 col-lg-6">
+            <h3 class="h5 mb-3">Upcoming events</h3>
+            {% if featured_events %}
+            {% for listing in featured_events %}
+            <article class="landing-feature-card">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <span class="landing-badge landing-badge-event">Event</span>
+                {% if listing.category %}<span class="small text-body-secondary">{{ listing.category }}</span>{% endif %}
+              </div>
+              <h4 class="h6 mt-2 mb-1">{{ listing.title }}</h4>
+              <p class="small text-body-secondary mb-2">
+                {% if listing.event_date %}{{ listing.event_date }}{% endif %}
+                {% if listing.event_time %} at {{ listing.event_time }}{% endif %}
+                {% if listing.location %} · {{ listing.location }}{% endif %}
+              </p>
+              {% if user_logged_in %}
+              <a class="landing-card-link" href="{{ url_for('user_home_view') }}?kind=event">Browse all events</a>
+              {% else %}
+              <a class="landing-card-link" href="/api/boards?kind=event">Browse all events</a>
+              {% endif %}
+            </article>
+            {% endfor %}
+            {% else %}
+            <p class="landing-empty">No featured events are available right now. Check back soon.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="landing-foot">
-    <span class="landing-foot-label">Seed accounts after <code>python manage.py init</code></span>
-    <ul class="seed-list">
-      <li><code>admin@uwi.edu</code> / <code>admin-dev</code></li>
-      <li><code>alumni.verified@my.uwi.edu</code> / <code>alumni-dev</code></li>
-      <li><code>alumni.pending@gmail.com</code> / <code>alumni-dev</code></li>
-      <li><code>alumni.fakeuwi@example.com</code> / <code>alumni-dev</code></li>
-    </ul>
+    <div class="container-xxl d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="brand-wordmark landing-foot-brand">UWI Connect</span>
+        <p class="mb-0 small">An independent alumni platform for the UWI community. Not an official UWI service.</p>
+      </div>
+      <ul class="landing-foot-links list-unstyled d-flex flex-wrap gap-3 mb-0 small">
+        <li><a href="{{ url_for('index_view') }}">Home</a></li>
+        <li><a href="{{ url_for('login_view') }}">Sign in</a></li>
+        <li><a href="{{ url_for('register_view') }}">Register</a></li>
+        <li><a href="/docs">API docs</a></li>
+      </ul>
+    </div>
   </footer>
 </div>
+{% endblock %}
+
+{% block external_js %}
+{% if user_logged_in %}
+<script src="{{ url_for('static', path='js/notifications.js') }}" defer></script>
+{% endif %}
 {% endblock %}
