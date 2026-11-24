@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
@@ -72,6 +73,23 @@ async def unauthorized_redirect_handler(request: Request, exc: Exception):
         request=request,
         name="401.html",
         status_code=status.HTTP_401_UNAUTHORIZED,
+    )
+
+
+@app.exception_handler(status.HTTP_403_FORBIDDEN)
+async def forbidden_handler(request: Request, exc: Exception):
+    detail = str(getattr(exc, "detail", ""))
+    if request.url.path.startswith("/api"):
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": detail})
+    if "CSRF" in detail:
+        message = "Your security token expired. Reload the page and try again."
+    else:
+        message = "You do not have permission to access this page."
+    return templates.TemplateResponse(
+        request=request,
+        name="403.html",
+        context={"message": message},
+        status_code=status.HTTP_403_FORBIDDEN,
     )
 
 

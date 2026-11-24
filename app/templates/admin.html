@@ -8,6 +8,7 @@
 <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Admin sections">
   <a class="btn btn-sm btn-outline-primary" href="#moderation">Listing moderation</a>
   <a class="btn btn-sm btn-outline-primary" href="#deletions">Deletion requests</a>
+  <a class="btn btn-sm btn-outline-primary" href="#revisions">Revision requests</a>
   <a class="btn btn-sm btn-outline-primary" href="#campaigns">Campaigns</a>
 </nav>
 
@@ -92,9 +93,11 @@
             </td>
             <td>
               <form method="post" action="{{ url_for('admin_publish_listing', listing_id=listing.id) }}" data-admin-action class="mb-2">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <button type="submit" class="btn btn-sm btn-success">Approve</button>
               </form>
               <form method="post" action="{{ url_for('admin_reject_listing', listing_id=listing.id) }}" data-admin-action>
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <label class="form-label small" for="rejectReason{{ listing.id }}">Rejection reason</label>
                 <textarea class="form-control form-control-sm mb-1" id="rejectReason{{ listing.id }}" name="rejection_reason" rows="2" placeholder="Explain what needs to change"></textarea>
                 <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
@@ -144,9 +147,11 @@
             </td>
             <td>
               <form method="post" action="{{ url_for('admin_approve_deletion', listing_id=listing.id) }}" data-admin-action data-confirm-delete="true" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <button type="submit" class="btn btn-sm btn-danger">Approve deletion</button>
               </form>
               <form method="post" action="{{ url_for('admin_deny_deletion', listing_id=listing.id) }}" data-admin-action class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Deny request</button>
               </form>
             </td>
@@ -167,6 +172,7 @@
     <p class="text-body-secondary small">Sending a campaign publishes an in-app Observer notification. This demo does not deliver email.</p>
 
     <form method="post" action="{{ url_for('admin_create_campaign') }}" data-admin-action class="row g-3 mb-4">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
       <div class="col-12 col-md-6">
         <label class="form-label" for="campaignSubject">Campaign title</label>
         <input class="form-control" id="campaignSubject" name="subject" required />
@@ -216,9 +222,11 @@
             <td>
               {% if campaign.status == 'draft' %}
               <form method="post" action="{{ url_for('admin_send_campaign', campaign_id=campaign.id) }}" data-admin-action class="mb-2">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <button type="submit" class="btn btn-sm btn-success">Send now</button>
               </form>
               <form method="post" action="{{ url_for('admin_schedule_campaign', campaign_id=campaign.id) }}" data-admin-action data-schedule-form>
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <label class="form-label small" for="scheduleAt{{ campaign.id }}">Schedule for</label>
                 <input class="form-control form-control-sm mb-1" type="datetime-local" id="scheduleAt{{ campaign.id }}" data-schedule-input />
                 <input type="hidden" name="scheduled_at" />
@@ -239,10 +247,49 @@
   </div>
 </section>
 
-<section class="card mb-4" aria-labelledby="revisionsHeading">
+<section class="card mb-4" id="revisions" aria-labelledby="revisionsHeading">
   <div class="card-body">
     <h2 id="revisionsHeading" class="h5">Revision requests</h2>
-    <p class="text-body-secondary mb-0">Review controls will appear when the published-listing revision API is available. No actions are available yet.</p>
+    <p class="text-body-secondary small">Approve proposed changes or deny them without changing the published listing.</p>
+    {% if revision_requests %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th scope="col">Listing</th>
+            <th scope="col">Requested by</th>
+            <th scope="col">Proposed title</th>
+            <th scope="col">Proposed description</th>
+            <th scope="col">Requested at</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for revision in revision_requests %}
+          <tr>
+            <td>#{{ revision.listing_id }}<div class="small text-body-secondary">{{ revision.original.title }}</div></td>
+            <td>{{ authors.get(revision.requesting_author_id, 'Unknown author') }}</td>
+            <td>{{ revision.proposed.title }}</td>
+            <td class="small">{{ revision.proposed.body }}</td>
+            <td class="small">{{ revision.requested_at }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_approve_revision', listing_id=revision.listing_id) }}" data-admin-action class="d-inline mb-1">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+                <button type="submit" class="btn btn-sm btn-success">Approve revision</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_deny_revision', listing_id=revision.listing_id) }}" data-admin-action class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Deny revision</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0" role="status">No revision requests are awaiting review.</div>
+    {% endif %}
   </div>
 </section>
 
