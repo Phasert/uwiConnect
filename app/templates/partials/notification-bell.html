@@ -1,4 +1,5 @@
-<div class="dropdown app-notification-menu" id="notificationMenu" data-notifications-url="/api/notifications">
+<div class="dropdown app-notification-menu" id="notificationMenu" data-notifications-url="/api/notifications"
+     data-stream-url="/api/notifications/stream" data-login-url="{{ url_for('login_view') }}">
   <button type="button" class="btn btn-link app-notification-bell p-0 text-decoration-none" id="notificationBell"
           aria-label="Notifications" aria-haspopup="true" aria-expanded="false" aria-controls="notificationPanel"
           data-bs-toggle="dropdown" data-bs-auto-close="outside">
