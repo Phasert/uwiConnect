@@ -160,6 +160,24 @@ def cmd_users(args: argparse.Namespace) -> None:
             )
 
 
+def cmd_send_test_email(args: argparse.Namespace) -> None:
+    """Send one manually requested SMTP test message."""
+    import smtplib
+
+    from app.services.email_service import SMTPEmailService
+
+    try:
+        SMTPEmailService().send_email(
+            args.to,
+            "UWI Connect SMTP test",
+            "This is a test email from UWI Connect.",
+        )
+    except (OSError, smtplib.SMTPException, ValueError) as exc:
+        print(f"Test email failed ({type(exc).__name__}).", file=sys.stderr)
+        raise SystemExit(1) from None
+    print("Test email sent.")
+
+
 @contextmanager
 def _campaign_processor_lock(lock_path: Path | None = None) -> Iterator[bool]:
     """Return whether this process acquired the campaign processor lock."""
@@ -266,6 +284,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_users = sub.add_parser("users", help="List users in the database")
     p_users.set_defaults(func=cmd_users)
+
+    p_test_email = sub.add_parser(
+        "send-test-email",
+        help="Send a test email using the configured SMTP account",
+    )
+    p_test_email.add_argument("--to", required=True, help="Recipient email address")
+    p_test_email.set_defaults(func=cmd_send_test_email)
 
     p_process_campaigns = sub.add_parser(
         "process-campaigns",

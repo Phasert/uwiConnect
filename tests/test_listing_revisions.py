@@ -1,9 +1,11 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, text
-from sqlmodel import create_engine
+from sqlmodel import Session, create_engine
 
 from app import database as database_module
+from app.database import engine
 from app.main import app
+from app.models.user import User
 from app.seed import seed
 from app.services import boards
 from app.services.observer import notification_publisher
@@ -161,10 +163,11 @@ def test_revision_request_rejects_wrong_owner_status_invalid_and_duplicate():
             "faculty": "FST",
         },
     ).json()["user"]
-    assert client.post(
-        "/api/auth/verify-email",
-        headers={"X-User-Id": str(registered["id"])},
-    ).status_code == 200
+    with Session(engine) as session:
+        stored_user = session.get(User, registered["id"])
+        stored_user.email_verified = 1
+        session.add(stored_user)
+        session.commit()
     other = _login("other.revision@my.uwi.edu", "other-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
     published = _published_listing(author["id"], admin["id"], "job", "Guarded Job")

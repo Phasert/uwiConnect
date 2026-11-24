@@ -1,6 +1,9 @@
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
+from app.database import engine
 from app.main import app
+from app.models.user import User
 from app.seed import seed
 from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
@@ -26,10 +29,11 @@ def _register_other_alumnus() -> dict:
     )
     assert response.status_code == 200
     user = response.json()["user"]
-    assert client.post(
-        "/api/auth/verify-email",
-        headers={"X-User-Id": str(user["id"])},
-    ).status_code == 200
+    with Session(engine) as session:
+        stored_user = session.get(User, user["id"])
+        stored_user.email_verified = 1
+        session.add(stored_user)
+        session.commit()
     return login(client, "listing.security@my.uwi.edu", "security-dev")
 
 

@@ -6,6 +6,7 @@ from app.seed import seed
 from app.services import board_auth, boards, campaigns
 from app.services.website_notifications import register_website_observer
 from tests.campaign_test_helpers import isolate_publisher
+from tests.csrf_test_helpers import csrf_token_from_html
 
 ADMIN_EMAIL = "admin@uwi.edu"
 ADMIN_PASSWORD = "admin-dev"
@@ -20,12 +21,19 @@ def seeded_database():
 
 def _login(email, password):
     client = TestClient(app)
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     response = client.post(
         "/login",
-        data={"username": email, "password": password},
+        data={
+            "username": email,
+            "password": password,
+            "csrf_token": csrf_token,
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
+    csrf_token = client.get("/api/auth/csrf").json()["csrf_token"]
+    client.headers.update({"X-CSRF-Token": csrf_token})
     return client
 
 
@@ -81,11 +89,8 @@ def _submit_listing(client, kind, title, **extra):
     return rows[-1]["id"]
 
 
-def _request_deletion(listing_id):
-    response = TestClient(app).post(
-        f"/api/boards/listings/{listing_id}/deletion-request",
-        headers={"X-User-Id": str(_alumni_id())},
-    )
+def _request_deletion(client, listing_id):
+    response = client.post(f"/api/boards/listings/{listing_id}/deletion-request")
     assert response.status_code == 200
 
 
@@ -103,10 +108,10 @@ def _create_campaign(client, subject="Demo campaign", body="Alumni update"):
 
 def test_admin_dashboard_requires_admin_session(admin_client, alumni_client):
     assert TestClient(app).get("/admin").status_code == 401
-    assert alumni_client.get("/admin").status_code == 401
+    assert alumni_client.get("/admin").status_code == 403
     assert (
         alumni_client.post("/admin/listings/999999/publish", follow_redirects=False).status_code
-        == 401
+        == 403
     )
     assert (
         alumni_client.post(
@@ -114,7 +119,7 @@ def test_admin_dashboard_requires_admin_session(admin_client, alumni_client):
             data={"subject": "Blocked", "body": "Blocked"},
             follow_redirects=False,
         ).status_code
-        == 401
+        == 403
     )
 
     page = admin_client.get("/admin")
@@ -212,7 +217,7 @@ def test_backend_error_is_displayed(admin_client, monkeypatch):
 
 def test_deletion_requests_display_and_deny(admin_client, alumni_client):
     listing_id = _submit_listing(alumni_client, "job", "Deletion Demo Role")
-    _request_deletion(listing_id)
+    _request_deletion(alumni_client, listing_id)
 
     page = admin_client.get("/admin")
     assert "Deletion requests" in page.text
@@ -237,7 +242,7 @@ def test_deletion_requests_display_and_deny(admin_client, alumni_client):
 
 def test_deletion_approval_removes_listing(admin_client, alumni_client):
     listing_id = _submit_listing(alumni_client, "event", "Permanent Deletion Demo")
-    _request_deletion(listing_id)
+    _request_deletion(alumni_client, listing_id)
 
     response = admin_client.post(
         f"/admin/listings/{listing_id}/deletion-request/approve",

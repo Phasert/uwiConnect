@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import smtplib
+from html import escape
 from typing import Any
+from urllib.parse import quote
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -103,6 +106,66 @@ def verify_email(user_id: int) -> dict[str, Any]:
                 "ok": False,
                 "error": "email is not an approved UWI institutional address",
             }
+
+        user.email_verified = 1
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return {"ok": True, "user": public_user(user)}
+
+
+def send_verification_email(user_id: int) -> None:
+    """Issue a verification token and deliver it after registration completes."""
+    from app.config import get_settings
+    from app.services.email_service import SMTPEmailService
+    from app.services.verification_tokens import issue_verification_token
+
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if user is None or user.email_verified or not is_uwi_email(user.email):
+            return
+        token = issue_verification_token(session, user_id)
+        session.commit()
+        recipient = user.email
+
+    base_url = get_settings().app_base_url.rstrip("/")
+    verification_url = f"{base_url}/api/auth/verify-email?token={quote(token, safe='')}"
+    text_body = (
+        "Verify your UWI Connect email address by opening this link:\n\n"
+        f"{verification_url}\n\n"
+        "This link expires in 30 minutes."
+    )
+    html_body = (
+        "<p>Verify your UWI Connect email address by opening this link:</p>"
+        f'<p><a href="{escape(verification_url, quote=True)}">Verify email</a></p>'
+        "<p>This link expires in 30 minutes.</p>"
+    )
+    try:
+        SMTPEmailService().send_email(
+            recipient,
+            "Verify your UWI Connect email address",
+            text_body,
+            html_body=html_body,
+        )
+    except (smtplib.SMTPException, OSError, ValueError):
+        # SMTPEmailService logs a redacted failure; registration stays successful.
+        return
+
+
+def verify_email_token(token: str) -> dict[str, Any]:
+    """Consume a valid token and mark its associated account verified."""
+    from app.services.verification_tokens import consume_verification_token
+
+    with Session(engine) as session:
+        user_id = consume_verification_token(session, token)
+        if user_id is None:
+            session.rollback()
+            return {"ok": False, "error": "verification token is invalid or expired"}
+
+        user = session.get(User, user_id)
+        if user is None or not is_uwi_email(user.email):
+            session.rollback()
+            return {"ok": False, "error": "verification token is invalid or expired"}
 
         user.email_verified = 1
         session.add(user)
