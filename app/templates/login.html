@@ -18,6 +18,7 @@
     <p class="auth-tagline">Sign in to continue</p>
 
     <form method="POST" action="{{ url_for('login_action_ajax') }}">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
       <div class="mb-3">
         <label class="form-label" for="username">Username</label>
         <input class="form-control" type="text" id="username" name="username" required autofocus>

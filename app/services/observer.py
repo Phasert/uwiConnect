@@ -57,8 +57,13 @@ class NotificationObserver(Protocol):
 @dataclass(frozen=True)
 class NotificationPublishResult:
     succeeded: bool
+    succeeded_observers: tuple[NotificationObserver, ...] = ()
     attempted_observers: tuple[NotificationObserver, ...] = ()
     failed_observers: tuple[NotificationObserver, ...] = ()
+
+    @property
+    def successful_observers(self) -> tuple[NotificationObserver, ...]:
+        return self.succeeded_observers
 
 
 def _observer_identity(observer: NotificationObserver) -> str:
@@ -86,6 +91,9 @@ class NotificationPublisher:
     def notify_with_result(
         self, event: NotificationEvent
     ) -> NotificationPublishResult:
+        return self.notify(event)
+
+    def notify(self, event: NotificationEvent) -> NotificationPublishResult:
         attempted_observers = tuple(self._observers)
         if not attempted_observers:
             return NotificationPublishResult(
@@ -95,9 +103,11 @@ class NotificationPublisher:
             )
         all_succeeded = True
         failed_observers: list[NotificationObserver] = []
+        succeeded_observers: list[NotificationObserver] = []
         for observer in attempted_observers:
             try:
                 observer(event)
+                succeeded_observers.append(observer)
             except Exception:
                 all_succeeded = False
                 failed_observers.append(observer)
@@ -109,12 +119,10 @@ class NotificationPublisher:
                 )
         return NotificationPublishResult(
             succeeded=all_succeeded,
+            succeeded_observers=tuple(succeeded_observers),
             attempted_observers=attempted_observers,
             failed_observers=tuple(failed_observers),
         )
-
-    def notify(self, event: NotificationEvent) -> None:
-        self.notify_with_result(event)
 
 
 notification_publisher = NotificationPublisher()

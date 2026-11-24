@@ -1,3 +1,4 @@
+from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -57,11 +58,13 @@ def _board(params: dict | None = None) -> list:
 
 
 def _web_login() -> None:
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     r = client.post(
         "/login",
         data={
             "username": "alumni.verified@my.uwi.edu",
             "password": "alumni-dev",
+            "csrf_token": csrf_token,
         },
         follow_redirects=False,
     )

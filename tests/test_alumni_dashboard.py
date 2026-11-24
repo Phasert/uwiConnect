@@ -1,4 +1,5 @@
 import pytest
+from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -27,9 +28,14 @@ def _user_id(email: str, password: str = PASSWORD) -> int:
 
 
 def _login(client: TestClient, email: str, password: str = PASSWORD) -> TestClient:
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     response = client.post(
         "/login",
-        data={"username": email, "password": password},
+        data={
+            "username": email,
+            "password": password,
+            "csrf_token": csrf_token,
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -106,7 +112,7 @@ def test_dashboard_with_no_submissions_shows_message(client):
 
 def test_unverified_alumni_cannot_access_dashboard(client):
     page = _login(client, UNVERIFIED_EMAIL).get("/app/dashboard")
-    assert page.status_code == 401
+    assert page.status_code == 403
 
 
 def test_list_by_author_returns_only_that_authors_listings(client):

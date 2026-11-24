@@ -80,9 +80,10 @@ def _campaign_event(campaign: Campaign) -> NotificationEvent:
 def _notification_publish_succeeded(event: NotificationEvent) -> bool:
     from app.services.website_notifications import website_notification_observer
 
-    publish_result = notification_publisher.notify_with_result(event)
+    publish_result = notification_publisher.notify(event)
     return (
         website_notification_observer in publish_result.attempted_observers
+        and website_notification_observer in publish_result.succeeded_observers
         and website_notification_observer not in publish_result.failed_observers
     )
 
