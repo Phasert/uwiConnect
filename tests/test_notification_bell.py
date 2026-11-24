@@ -73,6 +73,7 @@ def test_panel_contains_loading_empty_and_indicator_regions(alumni_client):
     assert "Loading notifications…" in page.text
     assert 'id="notificationStatus"' in page.text
     assert 'id="notificationList"' in page.text
+    assert 'data-stream-url="/api/notifications/stream"' in page.text
     assert 'aria-live="polite"' in page.text
     assert "app-notification-badge d-none" in page.text
 
@@ -83,20 +84,29 @@ def test_shared_script_is_included_once(alumni_client):
     assert page.text.count("notifications.js") == 1
 
 
-def test_script_uses_browser_session_and_actual_inbox_contract():
+def test_script_uses_cookie_auth_sse_and_id_dedupe():
     source = JS_PATH.read_text(encoding="utf-8")
 
     assert "fetch(url" in source
     assert "credentials: 'same-origin'" in source
     assert "payload.notifications" in source
+    assert "new EventSource(streamUrl)" in source
+    assert "addEventListener('notification'" in source
+    assert "event.lastEventId" in source
+    assert "items.clear()" in source
+    assert "items.has(item.id)" in source
+    assert "items.set(item.id, item)" in source
     assert "seen.has(key)" in source
     assert "clear(list)" in source
+    assert "response.status === 401 || response.status === 403" in source
+    assert "closeStream()" in source
+    assert "scheduleReconnect()" in source
     assert "controller.abort()" in source
     assert "X-User-Id" not in source
-    assert "EventSource" not in source
     assert "WebSocket" not in source
     assert "document.cookie" not in source
     assert "localStorage" not in source
+    assert "unread" not in source.lower()
 
 
 def test_merged_inbox_shape_still_has_no_read_status(alumni_client):
@@ -130,4 +140,11 @@ def test_cookie_authenticated_inbox_is_available(alumni_client):
     response = alumni_client.get("/api/notifications")
 
     assert response.status_code == 200
-    assert "notifications" in response.json()
+    assert set(response.json()) == {"notifications"}
+    assert isinstance(response.json()["notifications"], list)
+
+
+def test_header_only_inbox_request_is_rejected():
+    response = TestClient(app).get("/api/notifications", headers={"X-User-Id": "1"})
+
+    assert response.status_code == 401

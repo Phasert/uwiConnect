@@ -723,12 +723,6 @@ a {
   border-top: 1px solid color-mix(in srgb, var(--brand-ink) 12%, transparent);
 }
 
-.app-notification-item.is-unread {
-  background: color-mix(in srgb, var(--brand-accent-2) 9%, transparent);
-  border-left: 3px solid var(--brand-accent-2);
-  padding-left: calc(1rem - 3px);
-}
-
 .app-notification-message {
   overflow-wrap: anywhere;
 }
