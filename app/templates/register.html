@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Register · CampusWire{% endblock %}
+{% block title %}Register · UWI Connect{% endblock %}
 
 {% block content %}
 <div class="auth-shell">
@@ -13,8 +13,8 @@
     </svg>
   </div>
   <div class="auth-panel">
-    <a class="auth-back" href="{{ url_for('index_view') }}">← CampusWire</a>
-    <div class="brand-wordmark">CampusWire</div>
+    <a class="auth-back" href="{{ url_for('index_view') }}">← UWI Connect</a>
+    <div class="brand-wordmark">UWI Connect</div>
     <p class="auth-tagline">Create an account</p>
 
     <form method="POST" action="{{ url_for('register_view') }}">
