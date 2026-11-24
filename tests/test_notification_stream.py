@@ -1,7 +1,7 @@
 import json
 import time
-from contextlib import contextmanager, suppress
-from datetime import timedelta
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from queue import Empty, Queue
 from threading import Thread
 from typing import Any
@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from anyio import ClosedResourceError
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlmodel import Session, select
@@ -115,6 +116,12 @@ class _StreamReader:
     """Read one httpx streaming response through an externally bounded queue."""
 
     _END = object()
+    _EXPECTED_CLOSE_ERRORS = (
+        ClosedResourceError,
+        httpx.HTTPError,
+        OSError,
+        RuntimeError,
+    )
 
     def __init__(self, response) -> None:
         self._response = response
@@ -128,7 +135,9 @@ class _StreamReader:
         try:
             for line in self._response.iter_lines():
                 self._lines.put(line)
-        except (httpx.HTTPError, OSError, RuntimeError) as exc:
+        except Exception as exc:  # noqa: BLE001 - forwarded to the owning test
+            # Forward stream failures to the owning test instead of letting
+            # them escape as unhandled thread exceptions.
             self._lines.put(exc)
         finally:
             self._lines.put(self._END)
@@ -150,9 +159,23 @@ class _StreamReader:
             return item
 
     def close(self) -> None:
-        with suppress(httpx.HTTPError, OSError, RuntimeError):
+        try:
             self._response.close()
-        self._thread.join(timeout=1.0)
+        except self._EXPECTED_CLOSE_ERRORS:
+            pass
+        self._thread.join(timeout=2.0)
+        if self._thread.is_alive():
+            raise AssertionError("notification-sse-reader thread did not stop")
+
+        while True:
+            try:
+                item = self._lines.get_nowait()
+            except Empty:
+                break
+            if isinstance(item, Exception) and not isinstance(
+                item, self._EXPECTED_CLOSE_ERRORS
+            ):
+                raise item
 
     def collect(
         self, *, count: int | None = None, wait: float = 2.0
@@ -386,16 +409,31 @@ def test_cursor_validation_uses_only_authenticated_users_rows(users) -> None:
     assert events == []
 
 
-def test_stream_closes_when_jwt_expires(users) -> None:
+def test_stream_closes_when_jwt_expires(users, monkeypatch) -> None:
     token = create_access_token(
-        {"sub": str(users["owner"])}, expires_delta=timedelta(seconds=1)
+        {"sub": str(users["owner"])}, expires_delta=timedelta(seconds=60)
     )
+    expires_at = notification_stream.token_expiry_timestamp(token)
+    assert expires_at is not None
+
+    class _Clock:
+        def __init__(self, value: datetime) -> None:
+            self.value = value
+
+        def now(self, tz=None) -> datetime:
+            return self.value
+
+    clock = _Clock(datetime.fromtimestamp(expires_at - 1, tz=timezone.utc))
+    monkeypatch.setattr(notification_stream, "datetime", clock)
     _set_token(token)
 
     with _open_stream() as (response, reader):
         assert response.status_code == 200
         assert reader is not None
-        reader.read_until_closed(timeout=3.0)
+        assert (reader.read_line(timeout=1.0) or "").strip() == ": keep-alive"
+
+        clock.value = datetime.fromtimestamp(expires_at + 1, tz=timezone.utc)
+        reader.read_until_closed(timeout=2.0)
 
 
 def test_stream_closes_when_account_access_is_revoked(users) -> None:
