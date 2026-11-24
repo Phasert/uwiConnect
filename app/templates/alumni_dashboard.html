@@ -5,6 +5,130 @@
 <h1>My submissions</h1>
 <p>Track the job and event listings you submitted and their current review status.</p>
 
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <button type="button" class="btn btn-primary" id="showSubmissionForms">Submit Listing</button>
+</div>
+
+<section id="submissionPanel" class="card mb-4{% if not show_form %} d-none{% endif %}" aria-labelledby="submissionHeading">
+  <div class="card-body">
+    <h2 id="submissionHeading" class="h5">Create a new listing</h2>
+    <p class="text-muted">Choose a listing type and complete the fields below. Submissions are reviewed before publication.</p>
+
+    {% if form_error %}
+    <div class="alert alert-danger" role="alert">{{ form_error }}</div>
+    {% endif %}
+
+    <form id="listingSubmissionForm" method="post" action="{{ url_for('submit_listing_action') }}">
+      <div class="mb-3">
+        <label class="form-label" for="submissionKind">Listing type</label>
+        <select class="form-select" id="submissionKind" name="kind" required>
+          <option value="job"{% if form_kind != 'event' %} selected{% endif %}>Job opportunity</option>
+          <option value="event"{% if form_kind == 'event' %} selected{% endif %}>Event</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="submissionTitle">Title <span class="text-danger">*</span></label>
+        <input class="form-control{% if form_error and 'title' in form_error %} is-invalid{% endif %}" id="submissionTitle" name="title" value="{{ form_data.get('title', '') }}" required />
+        {% if form_error and 'title' in form_error %}
+        <div class="invalid-feedback d-block">{{ form_error }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="submissionBody">Description <span class="text-danger">*</span></label>
+        <textarea class="form-control{% if form_error and 'body' in form_error %} is-invalid{% endif %}" id="submissionBody" name="body" rows="4" required>{{ form_data.get('body', '') }}</textarea>
+        {% if form_error and 'body' in form_error %}
+        <div class="invalid-feedback d-block">{{ form_error }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="submissionLocation">Location <span class="text-danger">*</span></label>
+        <input class="form-control{% if form_error and 'location' in form_error %} is-invalid{% endif %}" id="submissionLocation" name="location" value="{{ form_data.get('location', '') }}" required />
+        {% if form_error and 'location' in form_error %}
+        <div class="invalid-feedback d-block">{{ form_error }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="submissionCategory">Category or focus <span class="text-muted">(optional)</span></label>
+        <input class="form-control" id="submissionCategory" name="category" value="{{ form_data.get('category', '') }}" placeholder="For example: Workshop, Networking, Engineering" />
+      </div>
+
+      <fieldset id="jobFields" class="{% if form_kind == 'event' %}d-none{% endif %}"{% if form_kind == 'event' %} disabled{% endif %}>
+        <legend class="h6">Job details</legend>
+        <div class="mb-3">
+          <label class="form-label" for="jobCompany">Company or organisation <span class="text-danger">*</span></label>
+          <input class="form-control{% if form_error and 'company_name' in form_error %} is-invalid{% endif %}" id="jobCompany" name="company_name" value="{{ form_data.get('company_name', '') }}" required />
+          {% if form_error and 'company_name' in form_error %}
+          <div class="invalid-feedback d-block">{{ form_error }}</div>
+          {% endif %}
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="jobInstructions">Application instructions or link <span class="text-danger">*</span></label>
+          <textarea class="form-control{% if form_error and 'application_instructions' in form_error %} is-invalid{% endif %}" id="jobInstructions" name="application_instructions" rows="3" required>{{ form_data.get('application_instructions', '') }}</textarea>
+          {% if form_error and 'application_instructions' in form_error %}
+          <div class="invalid-feedback d-block">{{ form_error }}</div>
+          {% endif %}
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="jobDeadline">Application deadline <span class="text-muted">(optional)</span></label>
+          <input class="form-control{% if form_error and 'application_deadline' in form_error %} is-invalid{% endif %}" type="date" id="jobDeadline" name="application_deadline" value="{{ form_data.get('application_deadline', '') }}" />
+          {% if form_error and 'application_deadline' in form_error %}
+          <div class="invalid-feedback d-block">{{ form_error }}</div>
+          {% endif %}
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label" for="jobFaculty">Faculty <span class="text-muted">( faculty or department required )</span></label>
+            <input class="form-control{% if form_error and 'faculty' in form_error %} is-invalid{% endif %}" id="jobFaculty" name="faculty" value="{{ form_data.get('faculty', '') }}" />
+            {% if form_error and 'faculty' in form_error %}
+            <div class="invalid-feedback d-block">{{ form_error }}</div>
+            {% endif %}
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" for="jobDepartment">Department <span class="text-muted">( faculty or department required )</span></label>
+            <input class="form-control{% if form_error and 'department' in form_error %} is-invalid{% endif %}" id="jobDepartment" name="department" value="{{ form_data.get('department', '') }}" />
+            {% if form_error and 'department' in form_error %}
+            <div class="invalid-feedback d-block">{{ form_error }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset id="eventFields" class="{% if form_kind != 'event' %}d-none{% endif %}"{% if form_kind != 'event' %} disabled{% endif %}>
+        <legend class="h6">Event details</legend>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label" for="eventDate">Event date <span class="text-danger">*</span></label>
+            <input class="form-control{% if form_error and 'event_date' in form_error %} is-invalid{% endif %}" type="date" id="eventDate" name="event_date" value="{{ form_data.get('event_date', '') }}" required />
+            {% if form_error and 'event_date' in form_error %}
+            <div class="invalid-feedback d-block">{{ form_error }}</div>
+            {% endif %}
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label" for="eventTime">Event time <span class="text-danger">*</span></label>
+            <input class="form-control{% if form_error and 'event_time' in form_error %} is-invalid{% endif %}" type="time" id="eventTime" name="event_time" value="{{ form_data.get('event_time', '') }}" required />
+            {% if form_error and 'event_time' in form_error %}
+            <div class="invalid-feedback d-block">{{ form_error }}</div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="eventRegistration">Registration information or link <span class="text-muted">(optional)</span></label>
+          <textarea class="form-control" id="eventRegistration" name="registration_information" rows="3">{{ form_data.get('registration_information', '') }}</textarea>
+        </div>
+      </fieldset>
+
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button type="submit" class="btn btn-primary" id="submitListingButton">Submit for review</button>
+        <button type="button" class="btn btn-outline-secondary" id="cancelSubmission">Cancel</button>
+      </div>
+    </form>
+  </div>
+</section>
+
 {% if listings %}
 <div class="table-responsive">
   <table class="table table-striped align-middle">
@@ -186,6 +310,44 @@
         });
     });
   });
+})();
+</script>
+<script>
+(function () {
+  const panel = document.getElementById('submissionPanel');
+  const showButton = document.getElementById('showSubmissionForms');
+  const cancelButton = document.getElementById('cancelSubmission');
+  const kindSelect = document.getElementById('submissionKind');
+  const jobFields = document.getElementById('jobFields');
+  const eventFields = document.getElementById('eventFields');
+  const form = document.getElementById('listingSubmissionForm');
+  const submitButton = document.getElementById('submitListingButton');
+
+  function syncFields() {
+    const isEvent = kindSelect.value === 'event';
+    jobFields.classList.toggle('d-none', isEvent);
+    eventFields.classList.toggle('d-none', !isEvent);
+    jobFields.disabled = isEvent;
+    eventFields.disabled = !isEvent;
+  }
+
+  showButton.addEventListener('click', function () {
+    panel.classList.remove('d-none');
+    kindSelect.focus();
+  });
+
+  cancelButton.addEventListener('click', function () {
+    panel.classList.add('d-none');
+  });
+
+  kindSelect.addEventListener('change', syncFields);
+
+  form.addEventListener('submit', function () {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Submitting...';
+  });
+
+  syncFields();
 })();
 </script>
 {% endblock %}
