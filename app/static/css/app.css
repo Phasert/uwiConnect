@@ -510,3 +510,69 @@ a {
   border-color: var(--brand-accent-2);
   color: var(--brand-accent-2);
 }
+
+.app-notification-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.app-notification-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-sidebar-text);
+  line-height: 1;
+}
+
+.app-notification-bell:hover {
+  color: var(--brand-surface);
+}
+
+.app-notification-bell:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 3px;
+  border-radius: var(--brand-radius);
+  color: var(--brand-surface);
+}
+
+.app-notification-bell svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: currentColor;
+}
+
+.app-notification-badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.55rem;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.app-notification-panel {
+  width: min(22rem, calc(100vw - 1.5rem));
+  max-height: min(28rem, 70vh);
+  overflow-y: auto;
+  color: var(--brand-ink);
+}
+
+.app-notification-item {
+  padding: 0.7rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--brand-ink) 12%, transparent);
+}
+
+.app-notification-item.is-unread {
+  background: color-mix(in srgb, var(--brand-accent-2) 9%, transparent);
+  border-left: 3px solid var(--brand-accent-2);
+  padding-left: calc(1rem - 3px);
+}
+
+.app-notification-message {
+  overflow-wrap: anywhere;
+}
+
+.app-notification-meta {
+  margin-top: 0.2rem;
+}
