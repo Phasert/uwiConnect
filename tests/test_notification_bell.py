@@ -8,7 +8,6 @@ from app.database import engine
 from app.main import app
 from app.models.notification import Notification
 from app.seed import seed
-from app.services import board_auth
 from tests.listing_auth_helpers import login as authenticate
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
@@ -16,7 +15,9 @@ ALUMNI_PASSWORD = "alumni-dev"
 ADMIN_EMAIL = "admin@uwi.edu"
 ADMIN_PASSWORD = "admin-dev"
 
-JS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "notifications.js"
+JS_PATH = (
+    Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "notifications.js"
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -98,8 +99,8 @@ def test_script_uses_browser_session_and_actual_inbox_contract():
     assert "localStorage" not in source
 
 
-def test_merged_inbox_shape_still_has_no_read_status():
-    user_id = board_auth.login(ALUMNI_EMAIL, ALUMNI_PASSWORD)["id"]
+def test_merged_inbox_shape_still_has_no_read_status(alumni_client):
+    user_id = authenticate(alumni_client, ALUMNI_EMAIL, ALUMNI_PASSWORD)["id"]
     with Session(engine) as session:
         session.add(
             Notification(
@@ -112,20 +113,21 @@ def test_merged_inbox_shape_still_has_no_read_status():
         )
         session.commit()
 
-    response = TestClient(app).get(
-        "/api/notifications", headers={"X-User-Id": str(user_id)}
-    )
+    response = alumni_client.get("/api/notifications")
 
     assert response.status_code == 200
     items = response.json()["notifications"]
-    matching = [item for item in items if item["message"] == "Contract check notification"]
+    matching = [
+        item for item in items if item["message"] == "Contract check notification"
+    ]
     assert len(matching) == 1
     assert set(matching[0]) == {"id", "user_id", "event_type", "message", "created_at"}
     assert "unread" not in matching[0]
     assert "is_read" not in matching[0]
 
 
-def test_cookie_authenticated_inbox_is_still_missing(alumni_client):
+def test_cookie_authenticated_inbox_is_available(alumni_client):
     response = alumni_client.get("/api/notifications")
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert "notifications" in response.json()
