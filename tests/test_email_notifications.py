@@ -1,35 +1,53 @@
+import asyncio
+from argparse import Namespace
 from collections.abc import Iterable
-from types import SimpleNamespace
+from contextlib import contextmanager
+from unittest.mock import MagicMock
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import create_engine
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text as sa_text
 from sqlmodel import select
 
+import app.cli as cli_module
 import app.database as database_module
+import app.main as main_module
+import app.services.campaigns as campaigns_module
 import app.services.email_delivery as email_delivery_module
-import app.services.email_sender as email_sender_module
+import app.services.email_notifications as email_notifications_module
+import app.services.recipient_selection as selection_module
 import app.services.website_notifications as website_module
+from app.config import Settings
 from app.models.email_delivery import (
     EMAIL_DELIVERY_RECIPIENT_EVENT_INDEX,
     EmailDelivery,
 )
+from app.models.listing import Listing
 from app.models.notification import Notification
 from app.models.user import User
 from app.services.email_delivery import EmailDeliveryStore, EmailDeliveryStoreError
 from app.services.email_notifications import (
     EmailDeliveryError,
     EmailNotificationObserver,
+    register_email_observer,
 )
-from app.services.email_sender import EmailSendError, SmtpEmailSender
+from app.services.email_sender import (
+    EmailConfigurationError,
+    EmailSendError,
+    SmtpEmailSender,
+)
 from app.services.observer import (
     CAMPAIGN_SENT,
     LISTING_PUBLISHED,
     NotificationEvent,
     NotificationPublisher,
+    notification_publisher,
 )
+from app.services.recipient_selection import email_recipient_selector
 from app.services.website_notifications import website_notification_observer
+from tests.campaign_test_helpers import add_campaign, add_user, isolate_publisher
 
 
 class FakeSender:
@@ -59,6 +77,25 @@ class FailingRecordStore(EmailDeliveryStore):
         self._wrapped.record_success(**kwargs)
 
 
+class InvalidConfigService:
+    def validate_configuration(self) -> None:
+        raise ValueError("SMTP host and sender email must be configured")
+
+    def send_email(self, *args, **kwargs) -> None:
+        raise AssertionError("send_email must not be called without configuration")
+
+
+class ValidatingService:
+    def __init__(self) -> None:
+        self.validation_calls = 0
+
+    def validate_configuration(self) -> None:
+        self.validation_calls += 1
+
+    def send_email(self, *args, **kwargs) -> None:
+        raise AssertionError("startup validation must not send email")
+
+
 class RecordingObserver:
     def __init__(self) -> None:
         self.events: list[NotificationEvent] = []
@@ -76,6 +113,59 @@ def delivery_store(test_session, monkeypatch) -> EmailDeliveryStore:
 @pytest.fixture
 def website_engine(test_session, monkeypatch) -> None:
     monkeypatch.setattr(website_module, "engine", test_session.get_bind())
+    monkeypatch.setattr(selection_module, "engine", test_session.get_bind())
+
+
+def _settings(**overrides):
+    values = {
+        "database_uri": "sqlite://",
+        "secret_key": "test-key",
+        "env": "test",
+        "smtp_host": "smtp.example.test",
+        "smtp_port": 587,
+        "smtp_username": "sender@example.test",
+        "smtp_password": SecretStr("not-a-real-password"),
+        "smtp_from_email": "no-reply@example.test",
+        "smtp_from_name": "UWI Connect",
+        "smtp_use_tls": True,
+        "smtp_timeout": 10.0,
+        "notification_email_enabled": True,
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+def _eligible_user(
+    test_session,
+    email: str,
+    *,
+    faculty: str | None = "Science and Technology",
+    department: str | None = "Computer Science",
+) -> User:
+    user = add_user(test_session, role="alumni", email=email)
+    user.faculty = faculty
+    user.department = department
+    test_session.add(user)
+    test_session.commit()
+    test_session.refresh(user)
+    return user
+
+
+def _listing(test_session, *, faculty: str, department: str) -> Listing:
+    listing = Listing(
+        author_id=1,
+        kind="job",
+        title="Targeted Role",
+        body="Body",
+        status="published",
+        created_at="now",
+        faculty=faculty,
+        department=department,
+    )
+    test_session.add(listing)
+    test_session.commit()
+    test_session.refresh(listing)
+    return listing
 
 
 def _recipients(*addresses: str):
@@ -85,10 +175,12 @@ def _recipients(*addresses: str):
     return select_recipients
 
 
-def _listing_event(event_id: str = "listing-email-1") -> NotificationEvent:
+def _listing_event(
+    event_id: str = "listing-email-1", *, listing_id: int = 7
+) -> NotificationEvent:
     return NotificationEvent(
         LISTING_PUBLISHED,
-        listing_id=7,
+        listing_id=listing_id,
         message="New software engineering job",
         event_id=event_id,
     )
@@ -244,26 +336,10 @@ def test_record_failure_is_reported_and_does_not_block_other_recipients(
 
 
 def test_missing_sender_configuration_is_reported_without_recording(
-    test_session, delivery_store, monkeypatch
+    test_session, delivery_store
 ) -> None:
-    monkeypatch.setattr(
-        email_sender_module,
-        "get_settings",
-        lambda: SimpleNamespace(
-            smtp_host="",
-            smtp_port=587,
-            smtp_username="",
-            smtp_password="",
-            smtp_from_address="",
-            smtp_timeout=10.0,
-            smtp_use_implicit_tls=False,
-            smtp_use_starttls=True,
-        ),
-    )
-    created: list[object] = []
-    sender = SmtpEmailSender(transport_factory=lambda config: created.append(config))
     observer = EmailNotificationObserver(
-        sender=sender,
+        sender=SmtpEmailSender(InvalidConfigService()),
         recipient_selector=_recipients("one@my.uwi.edu"),
         delivery_store=delivery_store,
     )
@@ -272,7 +348,6 @@ def test_missing_sender_configuration_is_reported_without_recording(
     with pytest.raises(EmailDeliveryError, match="EmailConfigurationError"):
         observer(event)
 
-    assert created == []
     assert _rows(test_session) == []
 
 
@@ -404,8 +479,195 @@ def test_database_initialization_adds_email_table_without_changing_legacy_rows(
     )
 
 
-def test_no_module_level_production_email_observer_or_registration() -> None:
-    import app.services.email_notifications as module
+def test_observer_uses_shared_selector_for_listing_audience(
+    test_session, delivery_store, website_engine
+) -> None:
+    qualified = _eligible_user(test_session, "qualified@my.uwi.edu")
+    _eligible_user(test_session, "other-faculty@my.uwi.edu", faculty="Engineering")
+    add_user(
+        test_session,
+        role="alumni",
+        email="unverified@my.uwi.edu",
+        verified=0,
+    )
+    listing = _listing(
+        test_session,
+        faculty="Science and Technology",
+        department="Computer Science",
+    )
+    sender = FakeSender()
+    observer = EmailNotificationObserver(
+        sender=sender,
+        recipient_selector=email_recipient_selector,
+        delivery_store=delivery_store,
+    )
 
-    assert not hasattr(module, "email_notification_observer")
-    assert not hasattr(module, "register_email_observer")
+    observer(_listing_event(f"shared-selector-{listing.id}", listing_id=listing.id))
+
+    assert [call["recipient"] for call in sender.calls] == [qualified.email]
+
+
+def test_campaign_send_succeeds_when_email_fails_but_website_delivery_succeeds(
+    test_session, monkeypatch, delivery_store, website_engine
+) -> None:
+    monkeypatch.setattr(campaigns_module, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin", email="campaign-admin@uwi.edu")
+    alumnus = _eligible_user(
+        test_session, "campaign-alum@my.uwi.edu", faculty=None, department=None
+    )
+    campaign = add_campaign(test_session, admin.id)
+    email_observer = EmailNotificationObserver(
+        sender=FakeSender(failures=[alumnus.email]),
+        recipient_selector=email_recipient_selector,
+        delivery_store=delivery_store,
+    )
+
+    with isolate_publisher():
+        notification_publisher.subscribe(email_observer)
+        notification_publisher.subscribe(website_notification_observer)
+        result = campaigns_module.send_campaign(admin.id, campaign.id)
+
+    assert result["ok"] is True
+    assert result["campaign"]["status"] == "sent"
+    rows = test_session.exec(
+        select(Notification).where(
+            Notification.event_id == f"campaign-{campaign.id}-sent"
+        )
+    ).all()
+    assert [row.user_id for row in rows] == [alumnus.id]
+
+
+def test_disabled_notification_email_does_not_register_or_contact_smtp(
+    monkeypatch,
+) -> None:
+    factory = MagicMock(
+        side_effect=AssertionError("SMTP service must not be constructed when disabled")
+    )
+    monkeypatch.setattr(email_notifications_module, "SMTPEmailService", factory)
+
+    with isolate_publisher():
+        monkeypatch.setattr(
+            email_notifications_module, "email_notification_observer", None
+        )
+        assert (
+            register_email_observer(_settings(notification_email_enabled=False))
+            is False
+        )
+        assert email_notifications_module.email_notification_observer is None
+        assert notification_publisher._observers == []
+
+    factory.assert_not_called()
+
+
+def test_enabled_registration_validates_without_sending_and_is_idempotent(
+    monkeypatch,
+) -> None:
+    service = ValidatingService()
+    factory = MagicMock(return_value=service)
+    monkeypatch.setattr(email_notifications_module, "SMTPEmailService", factory)
+
+    with isolate_publisher():
+        monkeypatch.setattr(
+            email_notifications_module, "email_notification_observer", None
+        )
+        assert register_email_observer(_settings()) is True
+        observer = email_notifications_module.email_notification_observer
+        assert observer is not None
+        assert notification_publisher.is_subscribed(observer)
+
+        assert register_email_observer(_settings()) is True
+        assert email_notifications_module.email_notification_observer is observer
+        assert notification_publisher._observers == [observer]
+
+    assert service.validation_calls == 2
+    assert factory.call_count == 2
+
+
+def test_enabled_registration_rejects_invalid_config_without_subscribing(
+    monkeypatch,
+) -> None:
+    factory = MagicMock(return_value=InvalidConfigService())
+    monkeypatch.setattr(email_notifications_module, "SMTPEmailService", factory)
+
+    with isolate_publisher():
+        monkeypatch.setattr(
+            email_notifications_module, "email_notification_observer", None
+        )
+        with pytest.raises(
+            EmailConfigurationError,
+            match="Notification email configuration is invalid",
+        ):
+            register_email_observer(_settings())
+        assert email_notifications_module.email_notification_observer is None
+        assert notification_publisher._observers == []
+
+
+def test_main_lifespan_registers_email_observer(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        main_module, "register_website_observer", lambda: calls.append("website")
+    )
+    monkeypatch.setattr(
+        main_module, "register_email_observer", lambda: calls.append("email")
+    )
+    monkeypatch.setattr("app.seed.seed", lambda reset=False: calls.append("seed"))
+
+    async def run_lifespan() -> None:
+        async with main_module.lifespan(object()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert calls == ["website", "email", "seed"]
+
+
+def _patch_cli_processor(monkeypatch) -> MagicMock:
+    @contextmanager
+    def acquired():
+        yield True
+
+    monkeypatch.setattr(cli_module, "_campaign_processor_lock", acquired)
+    monkeypatch.setattr("app.database.ensure_db_and_tables", lambda: None)
+    monkeypatch.setattr(
+        "app.services.website_notifications.register_website_observer", lambda: None
+    )
+    process = MagicMock(return_value={"processed": 0, "retained": 0})
+    monkeypatch.setattr("app.services.campaigns.process_due_campaigns", process)
+    return process
+
+
+def test_cli_process_campaigns_registers_email_observer(monkeypatch) -> None:
+    settings = _settings()
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+    process = _patch_cli_processor(monkeypatch)
+    register = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "app.services.email_notifications.register_email_observer", register
+    )
+
+    cli_module.cmd_process_campaigns(Namespace())
+
+    register.assert_called_once_with(settings)
+    process.assert_called_once_with()
+
+
+def test_cli_process_campaigns_reports_invalid_email_config(
+    monkeypatch, capsys
+) -> None:
+    settings = _settings()
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+    process = _patch_cli_processor(monkeypatch)
+    monkeypatch.setattr(
+        "app.services.email_notifications.register_email_observer",
+        MagicMock(side_effect=EmailConfigurationError("bad SMTP settings")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_module.cmd_process_campaigns(Namespace())
+
+    assert exc_info.value.code == 1
+    assert "Notification email configuration error: bad SMTP settings" in (
+        capsys.readouterr().err
+    )
+    process.assert_not_called()

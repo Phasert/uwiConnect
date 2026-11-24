@@ -1,302 +1,156 @@
 import smtplib
-import ssl
 import traceback
-from types import SimpleNamespace
 
 import pytest
+from pydantic import SecretStr
 
+from app.config import Settings
 from app.services import email_sender
 from app.services.email_sender import (
     EmailConfigurationError,
     EmailSendError,
-    SmtpConfig,
     SmtpEmailSender,
     send_email,
 )
+from app.services.email_service import SMTPEmailService
 
 
-class FakeTransport:
-    def __init__(self, *, fail_on: str | None = None) -> None:
-        self.calls: list[object] = []
-        self.fail_on = fail_on
-        self.messages: list[object] = []
-        self.starttls_contexts: list[object] = []
+class FakeSmtpService:
+    def __init__(
+        self,
+        *,
+        config_error: Exception | None = None,
+        send_error: Exception | None = None,
+    ) -> None:
+        self.config_error = config_error
+        self.send_error = send_error
+        self.validation_calls = 0
+        self.calls: list[tuple[object, ...]] = []
 
-    def _maybe_fail(self, name: str) -> None:
-        if self.fail_on == name:
-            raise smtplib.SMTPException(f"{name} failed")
+    def validate_configuration(self) -> None:
+        self.validation_calls += 1
+        if self.config_error is not None:
+            raise self.config_error
 
-    def ehlo(self) -> None:
-        self.calls.append("ehlo")
-        self._maybe_fail("ehlo")
-
-    def starttls(self, context=None) -> None:
-        self.calls.append("starttls")
-        self.starttls_contexts.append(context)
-        self._maybe_fail("starttls")
-
-    def login(self, user: str, password: str) -> None:
-        self.calls.append(("login", user, password))
-        self._maybe_fail("login")
-
-    def send_message(self, msg) -> None:
-        self.calls.append("send_message")
-        self._maybe_fail("send_message")
-        self.messages.append(msg)
-
-    def quit(self) -> None:
-        self.calls.append("quit")
-
-
-def _config(**overrides) -> SmtpConfig:
-    values = {
-        "host": "smtp.example.test",
-        "port": 587,
-        "username": "notifications@example.test",
-        "password": "not-a-real-password",
-        "from_address": "no-reply@example.test",
-        "timeout": 5.0,
-        "use_implicit_tls": False,
-        "use_starttls": True,
-    }
-    values.update(overrides)
-    return SmtpConfig(**values)
+    def send_email(self, *args, **kwargs) -> None:
+        self.calls.append((args, kwargs))
+        if self.send_error is not None:
+            raise self.send_error
 
 
 def _settings(**overrides):
     values = {
+        "database_uri": "sqlite://",
+        "secret_key": "test-key",
+        "env": "test",
         "smtp_host": "smtp.example.test",
         "smtp_port": 587,
-        "smtp_username": "user@example.test",
-        "smtp_password": "not-a-real-password",
-        "smtp_from_address": "no-reply@example.test",
+        "smtp_username": "sender@example.test",
+        "smtp_password": SecretStr("not-a-real-password"),
+        "smtp_from_email": "no-reply@example.test",
+        "smtp_from_name": "UWI Connect",
+        "smtp_use_tls": True,
         "smtp_timeout": 10.0,
-        "smtp_use_implicit_tls": False,
-        "smtp_use_starttls": True,
+        "notification_email_enabled": True,
     }
     values.update(overrides)
-    return SimpleNamespace(**values)
+    return Settings(_env_file=None, **values)
 
 
-def test_missing_configuration_raises_before_transport_creation(monkeypatch) -> None:
-    monkeypatch.setattr(
-        email_sender,
-        "get_settings",
-        lambda: _settings(
-            smtp_host="", smtp_username="", smtp_password="", smtp_from_address=""
-        ),
-    )
-    created: list[object] = []
-    sender = SmtpEmailSender(transport_factory=lambda config: created.append(config))
-
-    with pytest.raises(EmailConfigurationError) as exc_info:
-        sender.send(recipient="alum@my.uwi.edu", subject="Hello", message="Body")
-
-    message = str(exc_info.value)
-    assert "SMTP_HOST" in message
-    assert "SMTP_PASSWORD" in message
-    assert "not-a-real-password" not in message
-    assert created == []
-
-
-def test_contradictory_tls_settings_raise_configuration_error() -> None:
-    with pytest.raises(EmailConfigurationError, match="exactly one"):
-        SmtpConfig.from_settings(
-            _settings(smtp_use_implicit_tls=True, smtp_use_starttls=True)
-        )
-
-
-def test_direct_config_rejects_both_tls_modes_before_transport_factory() -> None:
-    factory_calls: list[SmtpConfig] = []
-
-    def factory(config: SmtpConfig) -> FakeTransport:
-        factory_calls.append(config)
-        return FakeTransport()
-
-    with pytest.raises(EmailConfigurationError, match="exactly one") as exc_info:
-        config = _config(use_implicit_tls=True, use_starttls=True)
-        sender = SmtpEmailSender(config, transport_factory=factory)
-        sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
-
-    assert factory_calls == []
-    assert "not-a-real-password" not in str(exc_info.value)
-
-
-def test_direct_config_rejects_no_tls_mode_before_transport_factory() -> None:
-    factory_calls: list[SmtpConfig] = []
-
-    def factory(config: SmtpConfig) -> FakeTransport:
-        factory_calls.append(config)
-        return FakeTransport()
-
-    with pytest.raises(EmailConfigurationError, match="exactly one") as exc_info:
-        config = _config(use_implicit_tls=False, use_starttls=False)
-        sender = SmtpEmailSender(config, transport_factory=factory)
-        sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
-
-    assert factory_calls == []
-    assert "not-a-real-password" not in str(exc_info.value)
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"host": ""},
-        {"from_address": ""},
-        {"username": ""},
-        {"password": ""},
-        {"port": 0},
-        {"port": "bad"},
-        {"timeout": 61},
-        {"timeout": "bad"},
-        {"from_address": "no-reply@example.test\nBcc: victim@x.test"},
-    ],
-)
-def test_direct_config_enforces_all_rules_before_transport_factory(overrides) -> None:
-    factory_calls: list[SmtpConfig] = []
-
-    def factory(config: SmtpConfig) -> FakeTransport:
-        factory_calls.append(config)
-        return FakeTransport()
-
-    with pytest.raises(EmailConfigurationError) as exc_info:
-        config = _config(**overrides)
-        sender = SmtpEmailSender(config, transport_factory=factory)
-        sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
-
-    assert factory_calls == []
-    assert "not-a-real-password" not in str(exc_info.value)
-
-
-def test_timeout_is_bounded() -> None:
-    with pytest.raises(EmailConfigurationError, match="SMTP_TIMEOUT"):
-        SmtpConfig.from_settings(_settings(smtp_timeout=61))
-
-
-def test_from_address_rejects_header_line_breaks() -> None:
-    with pytest.raises(EmailConfigurationError, match="line breaks"):
-        SmtpConfig.from_settings(
-            _settings(smtp_from_address="no-reply@example.test\nBcc: victim@x.test")
-        )
-
-
-def test_default_transport_factory_uses_explicit_tls_settings_and_timeout(
-    monkeypatch,
-) -> None:
-    created: list[tuple[object, ...]] = []
-    context = object()
-
-    class DummyTransport:
-        pass
-
-    def fake_smtp(host, port, *, timeout):
-        created.append(("SMTP", host, port, timeout))
-        return DummyTransport()
-
-    def fake_smtp_ssl(host, port, *, timeout, context):
-        created.append(("SMTP_SSL", host, port, timeout, context))
-        return DummyTransport()
-
-    monkeypatch.setattr(email_sender.smtplib, "SMTP", fake_smtp)
-    monkeypatch.setattr(email_sender.smtplib, "SMTP_SSL", fake_smtp_ssl)
-    monkeypatch.setattr(email_sender.ssl, "create_default_context", lambda: context)
-
-    email_sender._default_transport_factory(_config())
-    email_sender._default_transport_factory(
-        _config(use_implicit_tls=True, use_starttls=False)
-    )
-
-    assert created == [
-        ("SMTP", "smtp.example.test", 587, 5.0),
-        ("SMTP_SSL", "smtp.example.test", 587, 5.0, context),
-    ]
-
-
-def test_successful_starttls_send_uses_fake_transport() -> None:
-    transport = FakeTransport()
-    sender = SmtpEmailSender(_config(), transport_factory=lambda config: transport)
+def test_adapter_delegates_one_recipient_per_call_to_shared_service() -> None:
+    service = FakeSmtpService()
+    sender = SmtpEmailSender(service)
 
     sender.send(
-        recipient="alum@my.uwi.edu",
-        subject="New listing",
+        recipient="  Alum@MY.UWI.EDU ",
+        subject="  New listing  ",
         message="A new job is available.",
     )
 
-    assert transport.calls[:5] == [
-        "ehlo",
-        "starttls",
-        "ehlo",
-        ("login", "notifications@example.test", "not-a-real-password"),
-        "send_message",
+    assert service.validation_calls == 1
+    assert service.calls == [
+        (
+            ("alum@my.uwi.edu", "New listing", "A new job is available."),
+            {},
+        )
     ]
-    assert transport.calls[-1] == "quit"
-    assert len(transport.starttls_contexts) == 1
-    assert isinstance(transport.starttls_contexts[0], ssl.SSLContext)
-    message = transport.messages[0]
-    assert message["From"] == "no-reply@example.test"
-    assert message["To"] == "alum@my.uwi.edu"
-    assert message["Subject"] == "New listing"
-    assert message.get_content().strip() == "A new job is available."
 
 
-def test_recipient_uses_existing_email_normalization() -> None:
-    transport = FakeTransport()
-    sender = SmtpEmailSender(_config(), transport_factory=lambda config: transport)
+@pytest.mark.parametrize(
+    ("recipient", "subject", "message"),
+    [
+        ("", "Hi", "Body"),
+        ("one@x.test\ntwo@x.test", "Hi", "Body"),
+        ("one@x.test", "", "Body"),
+        ("one@x.test", "Hi\r\nBcc: victim@x.test", "Body"),
+        ("one@x.test", "Hi", "   "),
+    ],
+)
+def test_invalid_inputs_fail_before_the_shared_service_is_called(
+    recipient: str, subject: str, message: str
+) -> None:
+    service = FakeSmtpService()
+    sender = SmtpEmailSender(service)
 
-    sender.send(recipient="  Alum@MY.UWI.EDU ", subject="Hi", message="Body")
+    with pytest.raises(EmailSendError):
+        sender.send(recipient=recipient, subject=subject, message=message)
 
-    assert transport.messages[0]["To"] == "alum@my.uwi.edu"
+    assert service.validation_calls == 0
+    assert service.calls == []
 
 
-def test_implicit_tls_does_not_call_starttls() -> None:
-    transport = FakeTransport()
-    sender = SmtpEmailSender(
-        _config(use_implicit_tls=True, use_starttls=False),
-        transport_factory=lambda config: transport,
+def test_configuration_error_is_typed_and_does_not_expose_credentials() -> None:
+    service = FakeSmtpService(
+        config_error=ValueError("SMTP password is not configured")
     )
+    sender = SmtpEmailSender(service)
 
-    sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
-
-    assert "starttls" not in transport.calls
-    assert "send_message" in transport.calls
-
-
-def test_connection_failure_is_explicit() -> None:
-    def failing_factory(config: SmtpConfig):
-        raise OSError("network unreachable")
-
-    sender = SmtpEmailSender(_config(), transport_factory=failing_factory)
-
-    with pytest.raises(EmailSendError, match="SMTP connection failed"):
+    with pytest.raises(
+        EmailConfigurationError, match="SMTP password is not configured"
+    ) as exc_info:
         sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
 
-
-def test_transport_failure_is_explicit_and_still_closes_connection() -> None:
-    transport = FakeTransport(fail_on="send_message")
-    sender = SmtpEmailSender(_config(), transport_factory=lambda config: transport)
-
-    with pytest.raises(EmailSendError, match="SMTP delivery failed"):
-        sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
-
-    assert transport.calls[-1] == "quit"
+    assert service.calls == []
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert "not-a-real-password" not in rendered
 
 
-def test_smtp_failure_traceback_does_not_expose_credentials() -> None:
-    class LeakyTransport(FakeTransport):
-        def login(self, user: str, password: str) -> None:
-            raise smtplib.SMTPAuthenticationError(
-                535, b"authentication rejected not-a-real-password"
-            )
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("network unreachable"),
+        smtplib.SMTPAuthenticationError(535, b"authentication rejected"),
+        smtplib.SMTPRecipientsRefused({"alum@my.uwi.edu": (550, b"rejected")}),
+    ],
+)
+def test_transport_failures_are_typed_without_chained_credential_leaks(
+    error: Exception,
+) -> None:
+    service = FakeSmtpService(send_error=error)
+    sender = SmtpEmailSender(service)
 
-    transport = LeakyTransport()
-    sender = SmtpEmailSender(_config(), transport_factory=lambda config: transport)
-
-    with pytest.raises(EmailSendError) as exc_info:
+    with pytest.raises(EmailSendError, match="Email delivery failed") as exc_info:
         sender.send(recipient="alum@my.uwi.edu", subject="Hi", message="Body")
 
     rendered = "".join(traceback.format_exception(exc_info.value))
-    assert "SMTP delivery failed" in rendered
     assert "not-a-real-password" not in rendered
+    assert "authentication rejected" not in rendered
+
+
+def test_adapter_uses_shared_smtp_email_service_by_default() -> None:
+    sender = SmtpEmailSender()
+
+    assert isinstance(sender._service, SMTPEmailService)
+
+
+def test_adapter_preserves_secret_str_handling_without_sending() -> None:
+    sender = SmtpEmailSender(SMTPEmailService(_settings()))
+
+    sender._service.validate_configuration()
+
+    assert sender._service.settings.smtp_password.get_secret_value() == (
+        "not-a-real-password"
+    )
 
 
 def test_send_email_convenience_uses_configured_sender(monkeypatch) -> None:
@@ -317,3 +171,13 @@ def test_send_email_convenience_uses_configured_sender(monkeypatch) -> None:
             "message": "Body",
         }
     ]
+
+
+def test_canonical_settings_have_no_legacy_smtp_names() -> None:
+    settings = _settings()
+
+    assert not hasattr(settings, "smtp_from_address")
+    assert not hasattr(settings, "smtp_use_implicit_tls")
+    assert not hasattr(settings, "smtp_use_starttls")
+    assert isinstance(settings.smtp_password, SecretStr)
+    assert settings.notification_email_enabled is True
