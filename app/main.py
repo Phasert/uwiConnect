@@ -23,9 +23,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
+is_production = get_settings().env.lower() in {"prod", "production"}
+
 app = FastAPI(
     middleware=[
-        Middleware(SessionMiddleware, secret_key=get_settings().secret_key)
+        Middleware(
+            SessionMiddleware,
+            secret_key=get_settings().secret_key,
+            same_site="lax",
+            https_only=is_production,
+        )
     ],
     lifespan=lifespan,
 )

@@ -41,6 +41,7 @@ engine = create_engine(
 
 
 _NOTIFICATION_EVENT_INDEX = "uq_notification_user_event"
+_EMAIL_DELIVERY_EVENT_INDEX = "uq_email_delivery_recipient_event"
 
 
 def _ensure_notification_event_id_column() -> None:

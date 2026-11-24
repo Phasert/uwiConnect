@@ -7,6 +7,7 @@ from app.main import app
 from app.seed import seed
 from app.services import boards
 from app.services.observer import notification_publisher
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -26,11 +27,7 @@ class RecordingObserver:
 
 
 def _login(email: str, password: str = "alumni-dev") -> dict:
-    response = client.post(
-        "/api/auth/login", json={"email": email, "password": password}
-    )
-    assert response.status_code == 200
-    return response.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, kind: str, title: str) -> int:
@@ -39,7 +36,7 @@ def _submit(user_id: int, kind: str, title: str) -> int:
         json=complete_listing_payload(
             {"kind": kind, "title": title, "body": "Original body"}
         ),
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert response.status_code == 200
     return response.json()["listing"]["id"]
@@ -49,14 +46,14 @@ def _edit(user_id: int, listing_id: int, payload: dict):
     return client.put(
         f"/api/boards/listings/{listing_id}",
         json=payload,
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
 def _request_deletion(user_id: int, listing_id: int):
     return client.post(
         f"/api/boards/listings/{listing_id}/deletion-request",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
@@ -94,7 +91,7 @@ def test_editing_rejected_listing_resubmits_and_clears_reason():
     rejected = client.post(
         f"/api/admin/listings/{listing_id}/reject",
         json={"rejection_reason": "Needs a confirmed date."},
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     )
     assert rejected.status_code == 200
 
@@ -121,10 +118,11 @@ def test_edit_rejects_published_other_user_invalid_and_protected_changes():
     assert _edit(alum["id"], listing_id, {**payload, "status": "published"}).status_code == 422
     assert client.post(
         f"/api/admin/listings/{listing_id}/publish",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).status_code == 200
     assert _edit(alum["id"], listing_id, payload).status_code == 400
     assert _edit(alum["id"], 999999, payload).status_code == 400
+    client.cookies.clear()
     assert client.put(f"/api/boards/listings/{listing_id}", json=payload).status_code == 401
 
 
@@ -134,7 +132,7 @@ def test_published_deletion_request_stays_visible_and_cannot_duplicate():
     listing_id = _submit(alum["id"], "job", "Visible Deletion Request")
     assert client.post(
         f"/api/admin/listings/{listing_id}/publish",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).status_code == 200
 
     response = _request_deletion(alum["id"], listing_id)
@@ -147,15 +145,7 @@ def test_published_deletion_request_stays_visible_and_cannot_duplicate():
     assert own[listing_id]["deletion_requested"] is True
     assert _request_deletion(alum["id"], listing_id).status_code == 400
     assert _request_deletion(admin["id"], listing_id).status_code == 400
-    login = client.post(
-        "/login",
-        data={
-            "username": "alumni.verified@my.uwi.edu",
-            "password": "alumni-dev",
-        },
-        follow_redirects=False,
-    )
-    assert login.status_code == 303
+    _login("alumni.verified@my.uwi.edu")
     dashboard = client.get("/app/dashboard")
     assert "Deletion requested — awaiting admin review" in dashboard.text
 
@@ -168,34 +158,34 @@ def test_admin_lists_and_denies_deletion_request():
 
     denied_list = client.get(
         "/api/admin/listings/deletion-requests",
-        headers={"X-User-Id": str(alum["id"])},
+        headers=auth_headers(client, alum["id"]),
     )
     denied_approval = client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/approve",
-        headers={"X-User-Id": str(alum["id"])},
+        headers=auth_headers(client, alum["id"]),
     )
     denied_denial = client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/deny",
-        headers={"X-User-Id": str(alum["id"])},
+        headers=auth_headers(client, alum["id"]),
     )
     requests = client.get(
         "/api/admin/listings/deletion-requests",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     )
     denial = client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/deny",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     )
 
     assert denied_list.status_code == 403
-    assert denied_approval.status_code == 400
-    assert denied_denial.status_code == 400
+    assert denied_approval.status_code == 403
+    assert denied_denial.status_code == 403
     assert listing_id in [row["id"] for row in requests.json()["listings"]]
     assert denial.status_code == 200
     assert denial.json()["listing"]["deletion_requested"] is False
     assert client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/deny",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).status_code == 400
 
 
@@ -207,7 +197,7 @@ def test_admin_approves_deletion_and_removes_listing():
 
     response = client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/approve",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     )
 
     assert response.status_code == 200
@@ -215,7 +205,7 @@ def test_admin_approves_deletion_and_removes_listing():
     assert listing_id not in [row["id"] for row in boards.list_by_author(alum["id"])]
     assert client.post(
         f"/api/admin/listings/{listing_id}/deletion-request/approve",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).status_code == 400
 
 
@@ -234,13 +224,13 @@ def test_listing_actions_do_not_emit_notifications():
         assert _request_deletion(alum["id"], listing_id).status_code == 200
         assert client.post(
             f"/api/admin/listings/{listing_id}/deletion-request/deny",
-            headers={"X-User-Id": str(admin["id"])},
+            headers=auth_headers(client, admin["id"]),
         ).status_code == 200
         approved_id = _submit(alum["id"], "event", "Quiet Approval")
         assert _request_deletion(alum["id"], approved_id).status_code == 200
         assert client.post(
             f"/api/admin/listings/{approved_id}/deletion-request/approve",
-            headers={"X-User-Id": str(admin["id"])},
+            headers=auth_headers(client, admin["id"]),
         ).status_code == 200
     finally:
         notification_publisher.unsubscribe(observer)

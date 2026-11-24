@@ -1,8 +1,10 @@
+from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
 from app.services.observer import notification_publisher
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -22,16 +24,14 @@ class RecordingObserver:
 
 
 def _login(email: str, password: str) -> dict:
-    r = client.post("/api/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200
-    return r.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, payload: dict) -> dict:
     r = client.post(
         "/api/boards/listings",
         json=complete_listing_payload(payload),
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert r.status_code == 200
     return r.json()
@@ -40,14 +40,14 @@ def _submit(user_id: int, payload: dict) -> dict:
 def _publish(user_id: int, listing_id: int):
     return client.post(
         f"/api/admin/listings/{listing_id}/publish",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
 def _reject(user_id: int, listing_id: int):
     return client.post(
         f"/api/admin/listings/{listing_id}/reject",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
@@ -58,11 +58,13 @@ def _board(params: dict | None = None) -> list:
 
 
 def _web_login() -> None:
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     r = client.post(
         "/login",
         data={
             "username": "alumni.verified@my.uwi.edu",
             "password": "alumni-dev",
+            "csrf_token": csrf_token,
         },
         follow_redirects=False,
     )
@@ -79,7 +81,7 @@ def _published_pair(admin: dict, alum: dict, job: dict, event: dict) -> tuple[in
 
 def test_required_fields_are_validated_and_new_listing_is_pending():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
-    headers = {"X-User-Id": str(alum["id"])}
+    headers = auth_headers(client, alum["id"])
 
     empty_title = client.post(
         "/api/boards/listings",

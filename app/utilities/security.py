@@ -1,6 +1,8 @@
-from pwdlib import PasswordHash
-from datetime import timedelta, datetime, timezone
+from datetime import datetime, timedelta, timezone
+
 import jwt
+from pwdlib import PasswordHash
+
 from app.config import get_settings
 
 password_hash = PasswordHash.recommended()
@@ -30,10 +32,10 @@ def create_access_token(
 
 
 def access_token_cookie_kwargs() -> dict:
-    """Cookie flags that work on local http; tighten in production."""
+    """Keep the browser JWT host-only and same-site; require HTTPS in production."""
     is_prod = get_settings().env.lower() in {"prod", "production"}
     return {
         "httponly": True,
-        "samesite": "none" if is_prod else "lax",
+        "samesite": "lax",
         "secure": is_prod,
     }

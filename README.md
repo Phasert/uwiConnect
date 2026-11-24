@@ -29,6 +29,8 @@ Open http://127.0.0.1:5000 — SSR auth shell; scenario JSON under `/api` and Op
 
 JSON login: `POST /api/auth/login` with `{"email","password"}`. Other scenario endpoints take an `X-User-Id` header (demo auth).
 
+Same-origin browser clients can obtain a separate CSRF token from `GET /api/auth/csrf`; send it in `X-CSRF-Token` on state-changing fetch requests. Native SSR forms submit the same token as a hidden `csrf_token` field. The CSRF endpoint never returns the HttpOnly JWT.
+
 ## Student brief
 
 See [`ASSIGNMENT.md`](ASSIGNMENT.md) and [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md).
