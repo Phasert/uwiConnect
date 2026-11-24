@@ -1,7 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
+from app.database import engine
 from app.main import app
+from app.models.user import User
 from app.seed import seed
 from app.services.observer import (
     CAMPAIGN_SENT,
@@ -18,6 +21,15 @@ from tests.listing_test_helpers import complete_listing_payload
 
 def setup_module() -> None:
     seed(reset=True)
+    with Session(engine) as session:
+        alum = session.exec(
+            select(User).where(User.email == "alumni.verified@my.uwi.edu")
+        ).one()
+        alum.programme = "Computer Science"
+        alum.faculty = "Science and Technology"
+        alum.department = "Computer Science"
+        session.add(alum)
+        session.commit()
     register_website_observer()
 
 
@@ -221,9 +233,9 @@ def test_repeated_publish_does_not_duplicate_notifications():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
     title = "Repeat Notify Job"
-    listing_id = _submit(
-        alum["id"], {"kind": "job", "title": title, "body": "Body"}
-    )["listing"]["id"]
+    listing_id = _submit(alum["id"], {"kind": "job", "title": title, "body": "Body"})[
+        "listing"
+    ]["id"]
 
     assert _publish(admin["id"], listing_id).status_code == 200
     assert len([row for row in _inbox(alum["id"]) if title in row["message"]]) == 1

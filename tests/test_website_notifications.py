@@ -46,7 +46,15 @@ def wired(test_session, monkeypatch):
     return test_session
 
 
-def add_user(session, email, *, verified=1, role="alumni"):
+def add_user(
+    session,
+    email,
+    *,
+    verified=1,
+    role="alumni",
+    faculty="Science and Technology",
+    department="Computer Science",
+):
     user = User(
         username=email,
         email=email,
@@ -54,11 +62,30 @@ def add_user(session, email, *, verified=1, role="alumni"):
         role=role,
         email_verified=verified,
         display_name="Test",
+        programme="Computer Science",
+        faculty=faculty,
+        department=department,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
     return user
+
+
+def _listing(session):
+    listing = Listing(
+        author_id=1,
+        kind="job",
+        title="Targeted Role",
+        body="Body",
+        status="published",
+        created_at="now",
+        faculty="Science and Technology",
+    )
+    session.add(listing)
+    session.commit()
+    session.refresh(listing)
+    return listing
 
 
 def _failing_observer(event: NotificationEvent) -> None:
@@ -69,9 +96,10 @@ def test_observer_selects_only_eligible_alumni(wired):
     eligible = add_user(wired, "eligible@my.uwi.edu")
     add_user(wired, "unverified@gmail.com", verified=0)
     add_user(wired, "admin@uwi.edu", role="admin")
+    listing = _listing(wired)
 
     WebsiteNotificationObserver()(
-        NotificationEvent(LISTING_PUBLISHED, listing_id=1, message="New job")
+        NotificationEvent(LISTING_PUBLISHED, listing_id=listing.id, message="New job")
     )
 
     rows = wired.exec(select(Notification)).all()
@@ -80,9 +108,10 @@ def test_observer_selects_only_eligible_alumni(wired):
 
 def test_notifications_appear_in_existing_inbox_with_unchanged_shape(wired):
     user = add_user(wired, "alum@my.uwi.edu")
+    listing = _listing(wired)
 
     WebsiteNotificationObserver()(
-        NotificationEvent(LISTING_PUBLISHED, listing_id=2, message="New event")
+        NotificationEvent(LISTING_PUBLISHED, listing_id=listing.id, message="New event")
     )
 
     inbox = notifications.inbox(user.id)
@@ -94,7 +123,10 @@ def test_notifications_appear_in_existing_inbox_with_unchanged_shape(wired):
 
 def test_reprocessing_same_event_does_not_duplicate_records(wired):
     user = add_user(wired, "alum@my.uwi.edu")
-    event = NotificationEvent(LISTING_PUBLISHED, listing_id=3, message="Repeat")
+    listing = _listing(wired)
+    event = NotificationEvent(
+        LISTING_PUBLISHED, listing_id=listing.id, message="Repeat"
+    )
     observer = WebsiteNotificationObserver()
 
     observer(event)
@@ -135,7 +167,10 @@ def test_user_event_index_rejects_direct_duplicate_insert(wired):
 def test_duplicate_conflict_does_not_block_other_recipients(wired):
     existing_user = add_user(wired, "existing@my.uwi.edu")
     other_user = add_user(wired, "other@my.uwi.edu")
-    event = NotificationEvent(LISTING_PUBLISHED, listing_id=5, message="Conflict")
+    listing = _listing(wired)
+    event = NotificationEvent(
+        LISTING_PUBLISHED, listing_id=listing.id, message="Conflict"
+    )
     wired.add(
         Notification(
             user_id=existing_user.id,
@@ -165,9 +200,7 @@ class _FakePostgresError(Exception):
 
 
 def test_duplicate_detection_accepts_postgres_user_event_violation():
-    original = _FakePostgresError(
-        "23505", database_module._NOTIFICATION_EVENT_INDEX
-    )
+    original = _FakePostgresError("23505", database_module._NOTIFICATION_EVENT_INDEX)
 
     assert _is_duplicate_notification(IntegrityError("INSERT", {}, original))
 
@@ -192,7 +225,9 @@ def test_duplicate_detection_uses_specific_sqlite_message():
     duplicate = IntegrityError(
         "INSERT INTO notification",
         {},
-        ValueError("UNIQUE constraint failed: notification.user_id, notification.event_id"),
+        ValueError(
+            "UNIQUE constraint failed: notification.user_id, notification.event_id"
+        ),
     )
     unrelated = IntegrityError(
         "INSERT INTO notification",
@@ -213,7 +248,10 @@ def test_duplicate_detection_uses_specific_sqlite_message():
 
 def test_unrelated_integrity_error_is_propagated(wired, monkeypatch):
     user = add_user(wired, "alum@my.uwi.edu")
-    event = NotificationEvent(LISTING_PUBLISHED, listing_id=6, message="Failure")
+    listing = _listing(wired)
+    event = NotificationEvent(
+        LISTING_PUBLISHED, listing_id=listing.id, message="Failure"
+    )
     wired.add(
         Notification(
             user_id=user.id,
@@ -242,8 +280,11 @@ def test_repeated_registration_reuses_single_observer():
 
 def test_dispatch_through_shared_publisher_persists_notifications(wired):
     user = add_user(wired, "alum@my.uwi.edu")
+    listing = _listing(wired)
     register_website_observer()
-    event = NotificationEvent(LISTING_PUBLISHED, listing_id=4, message="Dispatch")
+    event = NotificationEvent(
+        LISTING_PUBLISHED, listing_id=listing.id, message="Dispatch"
+    )
 
     notification_publisher.notify(event)
 
