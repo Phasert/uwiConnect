@@ -87,6 +87,6 @@ def test_submission_is_not_published_until_admin_publishes():
     assert listing_id in pending_ids
 
     inbox = client.get(
-        "/api/notifications", headers={"X-User-Id": str(alum["id"])}
+        "/api/notifications", headers=auth_headers(client, alum["id"])
     ).json()["notifications"]
     assert not any("Unpublished Event" in row["message"] for row in inbox)

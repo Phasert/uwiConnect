@@ -337,5 +337,5 @@ def schedule_campaign(
 
 
 @router.get("/notifications")
-def my_notifications(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    return {"notifications": notifications.inbox(_actor_id(x_user_id))}
+def my_notifications(user: AuthDep) -> dict[str, Any]:
+    return {"notifications": notifications.inbox(user.id)}
