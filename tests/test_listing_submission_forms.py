@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.seed import seed
 from app.services import board_auth, boards
+from tests.listing_auth_helpers import login
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
 UNVERIFIED_EMAIL = "alumni.pending@gmail.com"
@@ -19,12 +20,7 @@ def client():
 
 
 def _login(client: TestClient, email: str = ALUMNI_EMAIL) -> TestClient:
-    response = client.post(
-        "/login",
-        data={"username": email, "password": PASSWORD},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
+    login(client, email, PASSWORD)
     return client
 
 
@@ -77,7 +73,12 @@ def test_authenticated_alumnus_can_open_submission_forms(client):
 
 
 def test_unauthenticated_user_cannot_submit(client):
-    response = client.post("/app/dashboard/submit", data=_job_data())
+    csrf_token = client.get("/api/auth/csrf").json()["csrf_token"]
+    response = client.post(
+        "/app/dashboard/submit",
+        data=_job_data(),
+        headers={"X-CSRF-Token": csrf_token},
+    )
 
     assert response.status_code == 401
 
@@ -86,7 +87,7 @@ def test_unverified_alumnus_cannot_submit(client):
     _login(client, UNVERIFIED_EMAIL)
     response = client.post("/app/dashboard/submit", data=_job_data())
 
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 def test_job_fields_render_with_backend_field_names(client):

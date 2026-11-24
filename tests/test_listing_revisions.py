@@ -7,6 +7,7 @@ from app.main import app
 from app.seed import seed
 from app.services import boards
 from app.services.observer import notification_publisher
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -26,11 +27,7 @@ class RecordingObserver:
 
 
 def _login(email: str, password: str = "alumni-dev") -> dict:
-    response = client.post(
-        "/api/auth/login", json={"email": email, "password": password}
-    )
-    assert response.status_code == 200
-    return response.json()["user"]
+    return login(client, email, password)
 
 
 def _published_listing(author_id: int, admin_id: int, kind: str, title: str) -> dict:
@@ -39,13 +36,13 @@ def _published_listing(author_id: int, admin_id: int, kind: str, title: str) -> 
         json=complete_listing_payload(
             {"kind": kind, "title": title, "body": "Original body"}
         ),
-        headers={"X-User-Id": str(author_id)},
+        headers=auth_headers(client, author_id),
     )
     assert response.status_code == 200
     listing = response.json()["listing"]
     published = client.post(
         f"/api/admin/listings/{listing['id']}/publish",
-        headers={"X-User-Id": str(admin_id)},
+        headers=auth_headers(client, admin_id),
     )
     assert published.status_code == 200
     return published.json()["listing"]
@@ -55,14 +52,14 @@ def _revision(user_id: int, listing_id: int, payload: dict):
     return client.post(
         f"/api/boards/listings/{listing_id}/revision-request",
         json=payload,
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
 def _decision(admin_id: int, listing_id: int, decision: str):
     return client.post(
         f"/api/admin/listings/{listing_id}/revision-request/{decision}",
-        headers={"X-User-Id": str(admin_id)},
+        headers=auth_headers(client, admin_id),
     )
 
 
@@ -80,19 +77,12 @@ def test_author_requests_revision_without_changing_public_listing():
 
     response = _revision(author["id"], listing["id"], payload)
     public = {row["id"]: row for row in client.get("/api/boards").json()["listings"]}
-    assert client.post(
-        "/login",
-        data={
-            "username": "alumni.verified@my.uwi.edu",
-            "password": "alumni-dev",
-        },
-        follow_redirects=False,
-    ).status_code == 303
+    _login("alumni.verified@my.uwi.edu")
     public_page = client.get("/app", params={"q": "Original Job"})
     own = {row["id"]: row for row in boards.list_by_author(author["id"])}
     requests = client.get(
         "/api/admin/listings/revision-requests",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).json()["revision_requests"]
     request = next(row for row in requests if row["listing_id"] == listing["id"])
 
@@ -183,7 +173,7 @@ def test_revision_request_rejects_wrong_owner_status_invalid_and_duplicate():
         json=complete_listing_payload(
             {"kind": "job", "title": "Pending Job", "body": "Body"}
         ),
-        headers={"X-User-Id": str(author["id"])},
+        headers=auth_headers(client, author["id"]),
     )
     pending_id = pending_response.json()["listing"]["id"]
     rejected_id = client.post(
@@ -191,11 +181,11 @@ def test_revision_request_rejects_wrong_owner_status_invalid_and_duplicate():
         json=complete_listing_payload(
             {"kind": "event", "title": "Rejected Event", "body": "Body"}
         ),
-        headers={"X-User-Id": str(author["id"])},
+        headers=auth_headers(client, author["id"]),
     ).json()["listing"]["id"]
     assert client.post(
         f"/api/admin/listings/{rejected_id}/reject",
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     ).status_code == 200
 
     assert _revision(other["id"], published["id"], payload).status_code == 400
@@ -223,11 +213,11 @@ def test_revision_and_deletion_requests_cannot_overlap():
     assert _revision(author["id"], revised["id"], job_payload).status_code == 200
     assert client.post(
         f"/api/boards/listings/{revised['id']}/deletion-request",
-        headers={"X-User-Id": str(author["id"])},
+        headers=auth_headers(client, author["id"]),
     ).status_code == 400
     assert client.post(
         f"/api/boards/listings/{deleting['id']}/deletion-request",
-        headers={"X-User-Id": str(author["id"])},
+        headers=auth_headers(client, author["id"]),
     ).status_code == 200
     assert _revision(author["id"], deleting["id"], event_payload).status_code == 400
 
@@ -241,10 +231,10 @@ def test_only_admin_can_review_revisions():
 
     assert client.get(
         "/api/admin/listings/revision-requests",
-        headers={"X-User-Id": str(author["id"])},
+        headers=auth_headers(client, author["id"]),
     ).status_code == 403
-    assert _decision(author["id"], listing["id"], "approve").status_code == 400
-    assert _decision(author["id"], listing["id"], "deny").status_code == 400
+    assert _decision(author["id"], listing["id"], "approve").status_code == 403
+    assert _decision(author["id"], listing["id"], "deny").status_code == 403
     assert _decision(admin["id"], 999999, "approve").status_code == 400
 
 

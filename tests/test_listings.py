@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
+from tests.listing_auth_helpers import auth_headers, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -13,16 +14,14 @@ client = TestClient(app)
 
 
 def _login(email: str, password: str) -> dict:
-    r = client.post("/api/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200
-    return r.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, payload: dict) -> dict:
     r = client.post(
         "/api/boards/listings",
         json=complete_listing_payload(payload),
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert r.status_code == 200
     return r.json()
@@ -81,7 +80,8 @@ def test_submission_is_not_published_until_admin_publishes():
     pending_ids = [
         row["id"]
         for row in client.get(
-            "/api/admin/listings/pending", headers={"X-User-Id": str(admin["id"])}
+            "/api/admin/listings/pending",
+            headers=auth_headers(client, admin["id"]),
         ).json()["listings"]
     ]
     assert listing_id in pending_ids
