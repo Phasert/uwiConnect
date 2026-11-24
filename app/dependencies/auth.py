@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.dependencies.session import SessionDep
 from app.models.user import User
 from app.repositories.user import UserRepository
+from app.services.alumni_eligibility import is_account_accessible, is_eligible_alumni
 
 
 async def get_current_user(request: Request, db: SessionDep) -> User:
@@ -42,7 +43,7 @@ async def get_current_user(request: Request, db: SessionDep) -> User:
 
     repo = UserRepository(db)
     user = repo.get_by_id(user_id)
-    if user is None:
+    if user is None or not is_account_accessible(user):
         raise credentials_exception
     return user
 
@@ -80,7 +81,7 @@ AdminDep = Annotated[User, Depends(get_current_admin)]
 
 
 async def is_alumni(user: User):
-    return user.role == "alumni" and user.email_verified == 1
+    return is_eligible_alumni(user)
 
 
 async def is_alumni_dep(user: AuthDep):

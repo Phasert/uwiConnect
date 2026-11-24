@@ -100,7 +100,9 @@ def test_dashboard_hides_other_users_listings(client):
 
 
 def test_dashboard_with_no_submissions_shows_message(client):
-    result = accounts.register("empty@my.uwi.edu", PASSWORD, "Empty Alum")
+    result = accounts.register(
+        "empty@my.uwi.edu", PASSWORD, "Empty Alum", "Computer Science", "FST"
+    )
     assert result["ok"]
     accounts.verify_email(result["user"]["id"])
 

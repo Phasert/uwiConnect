@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.dependencies import AdminDep, AuthDep, get_csrf_protection
 from app.services import accounts, boards, campaigns, notifications
 from app.services import board_auth as auth
 
@@ -22,6 +23,9 @@ class RegisterBody(BaseModel):
     email: str
     password: str
     display_name: str = "Alumni"
+    programme: str
+    faculty: str | None = None
+    department: str | None = None
 
 
 class VerifyEmailBody(BaseModel):
@@ -32,6 +36,20 @@ class ListingBody(BaseModel):
     kind: str = Field(description="job | event")
     title: str
     body: str
+    company_name: str | None = None
+    location: str | None = None
+    application_instructions: str | None = None
+    application_deadline: str | None = None
+    faculty: str | None = None
+    department: str | None = None
+    event_date: str | None = None
+    event_time: str | None = None
+    category: str | None = None
+    registration_information: str | None = None
+
+
+class ListingEditBody(ListingBody):
+    model_config = ConfigDict(extra="forbid")
 
 
 class RejectionBody(BaseModel):
@@ -69,7 +87,14 @@ def register(
     body: RegisterBody,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
-    result = accounts.register(body.email, body.password, body.display_name)
+    result = accounts.register(
+        body.email,
+        body.password,
+        body.display_name,
+        body.programme,
+        body.faculty,
+        body.department,
+    )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     background_tasks.add_task(
@@ -96,35 +121,154 @@ def verify_email(body: VerifyEmailBody) -> dict[str, Any]:
 
 
 @router.get("/boards")
-def browse(kind: str | None = None, q: str | None = None) -> dict[str, Any]:
-    return {"listings": boards.browse_published(kind=kind, q=q)}
+def browse(
+    kind: str | None = None,
+    q: str | None = None,
+    category: str | None = None,
+    faculty: str | None = None,
+    department: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "listings": boards.browse_published(
+            kind=kind,
+            q=q,
+            category=category,
+            faculty=faculty,
+            department=department,
+        )
+    }
 
 
 @router.post("/boards/listings")
 def submit(
-    body: ListingBody, x_user_id: str | None = Header(default=None)
+    body: ListingBody,
+    user: AuthDep,
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
-    result = boards.submit_listing(
-        _actor_id(x_user_id), kind=body.kind, title=body.title, body=body.body
+    result = boards.submit_listing(user.id, **body.model_dump())
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.put("/boards/listings/{listing_id}")
+def edit(
+    listing_id: int,
+    body: ListingEditBody,
+    user: AuthDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.edit_listing(
+        user.id, listing_id, body.model_dump(exclude_unset=True)
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
 
 
+@router.post("/boards/listings/{listing_id}/revision-request")
+def request_revision(
+    listing_id: int,
+    body: ListingEditBody,
+    user: AuthDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.request_revision(
+        user.id, listing_id, body.model_dump(exclude_unset=True)
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/boards/listings/{listing_id}/deletion-request")
+def request_deletion(
+    listing_id: int,
+    user: AuthDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.request_deletion(user.id, listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
 @router.get("/admin/listings/pending")
-def pending(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    actor = auth.get_user(_actor_id(x_user_id))
-    if not actor or actor["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin only")
+def pending(admin: AdminDep) -> dict[str, Any]:
     return {"listings": boards.list_pending()}
+
+
+@router.get("/admin/listings/deletion-requests")
+def deletion_requests(admin: AdminDep) -> dict[str, Any]:
+    result = boards.list_deletion_requests(admin.id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=403, detail=result.get("error"))
+    return {"listings": result["listings"]}
+
+
+@router.get("/admin/listings/revision-requests")
+def revision_requests(admin: AdminDep) -> dict[str, Any]:
+    result = boards.list_revision_requests(admin.id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=403, detail=result.get("error"))
+    return {"revision_requests": result["revision_requests"]}
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/approve")
+def approve_revision(
+    listing_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.approve_revision(admin.id, listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/deny")
+def deny_revision(
+    listing_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.deny_revision(admin.id, listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/listings/{listing_id}/deletion-request/approve")
+def approve_deletion(
+    listing_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.approve_deletion(admin.id, listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/listings/{listing_id}/deletion-request/deny")
+def deny_deletion(
+    listing_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, Any]:
+    result = boards.deny_deletion(admin.id, listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 @router.post("/admin/listings/{listing_id}/publish")
 def publish(
-    listing_id: int, x_user_id: str | None = Header(default=None)
+    listing_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
-    result = boards.publish_listing(_actor_id(x_user_id), listing_id)
+    result = boards.publish_listing(admin.id, listing_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
@@ -133,12 +277,13 @@ def publish(
 @router.post("/admin/listings/{listing_id}/reject")
 def reject(
     listing_id: int,
+    admin: AdminDep,
     body: RejectionBody | None = None,
-    x_user_id: str | None = Header(default=None),
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
     rejection_reason = body.rejection_reason if body else None
     result = boards.reject_listing(
-        _actor_id(x_user_id), listing_id, rejection_reason=rejection_reason
+        admin.id, listing_id, rejection_reason=rejection_reason
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))

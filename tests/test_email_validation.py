@@ -102,6 +102,8 @@ def test_uppercase_registration_stores_lowercase_email() -> None:
             "email": "New.Student@MY.UWI.EDU",
             "password": "new-password",
             "display_name": "New Student",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -147,6 +149,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "Duplicate.Student@uwi.edu",
             "password": "first-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     second = client.post(
@@ -154,6 +158,8 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
         json={
             "email": "duplicate.student@UWI.EDU",
             "password": "second-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -180,6 +186,8 @@ def test_registration_sends_verification_link_that_can_be_consumed(
         json={
             "email": "scheduled.verify@uwi.edu",
             "password": "verify-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -211,6 +219,8 @@ def test_smtp_failure_does_not_fail_registration(monkeypatch) -> None:
         json={
             "email": "mail.failure@uwi.edu",
             "password": "verify-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 
@@ -224,6 +234,8 @@ def test_login_accepts_different_email_capitalization() -> None:
         json={
             "email": "Case.Login@uwi.edu",
             "password": "case-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
     assert registered.status_code == 200
@@ -283,6 +295,8 @@ def test_invalid_institutional_email_registration_is_rejected(email: str) -> Non
         json={
             "email": email,
             "password": "invalid-password",
+            "programme": "Computer Science",
+            "faculty": "FST",
         },
     )
 

@@ -41,6 +41,7 @@ engine = create_engine(
 
 
 _NOTIFICATION_EVENT_INDEX = "uq_notification_user_event"
+_EMAIL_DELIVERY_EVENT_INDEX = "uq_email_delivery_recipient_event"
 
 
 def _ensure_notification_event_id_column() -> None:
@@ -85,6 +86,72 @@ def _ensure_listing_rejection_reason_column() -> None:
             )
 
 
+def _ensure_listing_deletion_requested_column() -> None:
+    inspector = inspect(engine)
+    if "listing" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("listing")}
+    if "deletion_requested" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE listing ADD COLUMN deletion_requested "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+
+
+def _ensure_listing_detail_columns() -> None:
+    inspector = inspect(engine)
+    if "listing" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("listing")}
+    required_columns = (
+        "company_name",
+        "location",
+        "application_instructions",
+        "application_deadline",
+        "faculty",
+        "department",
+        "event_date",
+        "event_time",
+        "category",
+        "registration_information",
+    )
+    for column in required_columns:
+        if column not in columns:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE listing ADD COLUMN {column} VARCHAR"))
+
+
+def _ensure_user_account_columns() -> None:
+    inspector = inspect(engine)
+    if "user" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("user")}
+    text_columns = ("programme", "faculty", "department")
+    for column in text_columns:
+        if column not in columns:
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE "user" ADD COLUMN {column} VARCHAR'))
+    if "account_active" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE "user" ADD COLUMN account_active '
+                    "BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )
+    if "account_revoked" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE "user" ADD COLUMN account_revoked '
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+
+
 def create_db_and_tables() -> None:
     importlib.import_module("app.models")
 
@@ -92,6 +159,9 @@ def create_db_and_tables() -> None:
     _ensure_notification_event_id_column()
     _ensure_campaign_scheduled_at_column()
     _ensure_listing_rejection_reason_column()
+    _ensure_listing_deletion_requested_column()
+    _ensure_listing_detail_columns()
+    _ensure_user_account_columns()
 
 
 def drop_all() -> None:

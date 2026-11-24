@@ -28,16 +28,18 @@ def signup_user(
     username: str = Form(),
     email: str = Form(),
     password: str = Form(),
+    programme: str = Form(),
+    faculty: str | None = Form(default=None),
+    department: str | None = Form(default=None),
 ):
     user_repo = UserRepository(db)
     auth_service = AuthService(user_repo)
     try:
-        user = auth_service.register_user(username, email, password)
+        user = auth_service.register_user(
+            username, email, password, programme, faculty, department
+        )
         if user.id is not None:
-            background_tasks.add_task(
-                send_verification_email,
-                user.id,
-            )
+            background_tasks.add_task(send_verification_email, user.id)
         flash(
             request,
             "Registration completed! Check your email to verify your account.",
@@ -46,8 +48,8 @@ def signup_user(
             url=request.url_for("login_view"),
             status_code=status.HTTP_303_SEE_OTHER,
         )
-    except ValueError:
-        flash(request, "Username or email already exists", "danger")
+    except ValueError as exc:
+        flash(request, str(exc), "danger")
         return RedirectResponse(
             url=request.url_for("register_view"),
             status_code=status.HTTP_303_SEE_OTHER,

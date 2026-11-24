@@ -6,7 +6,9 @@ from sqlmodel import create_engine
 from app import database as database_module
 from app.main import app
 from app.seed import seed
-from app.services import board_auth, boards
+from app.services import boards
+from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_test_helpers import complete_listing_payload
 
 
 def setup_module() -> None:
@@ -17,18 +19,16 @@ client = TestClient(app)
 
 
 def _login_api(email: str, password: str) -> dict:
-    response = client.post(
-        "/api/auth/login", json={"email": email, "password": password}
-    )
-    assert response.status_code == 200
-    return response.json()["user"]
+    return login(client, email, password)
 
 
 def _submit(user_id: int, kind: str, title: str) -> int:
     response = client.post(
         "/api/boards/listings",
-        json={"kind": kind, "title": title, "body": "Test body"},
-        headers={"X-User-Id": str(user_id)},
+        json=complete_listing_payload(
+            {"kind": kind, "title": title, "body": "Test body"}
+        ),
+        headers=auth_headers(client, user_id),
     )
     assert response.status_code == 200
     return response.json()["listing"]["id"]
@@ -51,7 +51,7 @@ def test_saved_rejection_reasons_are_returned_by_author():
         response = client.post(
             f"/api/admin/listings/{listing_id}/reject",
             json={"rejection_reason": f"  {expected[title]}  "},
-            headers={"X-User-Id": str(admin["id"])},
+            headers=auth_headers(client, admin["id"]),
         )
         assert response.status_code == 200
 
@@ -66,14 +66,13 @@ def test_saved_rejection_reasons_are_returned_by_author():
 
 
 def test_dashboard_displays_saved_rejection_reason():
-    alum = board_auth.login("alumni.verified@my.uwi.edu", "alumni-dev")
-    assert alum is not None
+    alum = _login_api("alumni.verified@my.uwi.edu", "alumni-dev")
     listing_id = _submit(alum["id"], "job", "Dashboard Rejected Job")
     admin = _login_api("admin@uwi.edu", "admin-dev")
     response = client.post(
         f"/api/admin/listings/{listing_id}/reject",
         json={"rejection_reason": "Missing application instructions."},
-        headers={"X-User-Id": str(admin["id"])},
+        headers=auth_headers(client, admin["id"]),
     )
     assert response.status_code == 200
     csrf_token = csrf_token_from_html(client.get("/login").text)
