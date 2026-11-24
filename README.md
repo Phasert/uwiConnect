@@ -47,8 +47,19 @@ Set these values in the ignored `.env` file (also listed in `.env.example`):
 | `SMTP_FROM_EMAIL` | Sender email address (usually the same Gmail address) |
 | `SMTP_FROM_NAME` | Optional name shown to recipients |
 | `SMTP_USE_TLS` | `true` (required; uses STARTTLS) |
-| `SMTP_TIMEOUT` | Connection timeout in seconds (default `10`) |
+| `SMTP_TIMEOUT` | Connection timeout in seconds, at most `60` (default `10`) |
+| `NOTIFICATION_EMAIL_ENABLED` | `false` by default; set `true` to send listing/campaign notification emails |
 | `APP_BASE_URL` | Public app URL used in verification links; set this for deployments |
+
+The legacy `SMTP_FROM_ADDRESS`, `SMTP_USE_IMPLICIT_TLS`, and `SMTP_USE_STARTTLS`
+variables are no longer read; use `SMTP_FROM_EMAIL` and `SMTP_USE_TLS`.
+
+`NOTIFICATION_EMAIL_ENABLED` controls notification emails only. Verification
+emails still use the same SMTP service whenever registration occurs. When
+notification emails are enabled, application and campaign-processor startup
+validate the SMTP settings without opening a connection; invalid settings are
+reported at startup. Notification emails are best-effort with replay protection
+for recorded successes; they are not durable or guaranteed delivery.
 
 Enable 2-Step Verification in your Google Account, then create an App Password
 for this application. Do not use your normal Google password or commit `.env`.

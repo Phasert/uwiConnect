@@ -2,10 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from app.config import Settings, get_settings
 from app.services.accounts import normalize_email
 from app.services.email_delivery import EmailDeliveryStore, EmailDeliveryStoreError
-from app.services.email_sender import EmailError, EmailSender
-from app.services.observer import CAMPAIGN_SENT, NotificationEvent
+from app.services.email_sender import (
+    EmailConfigurationError,
+    EmailError,
+    EmailSender,
+    SmtpEmailSender,
+)
+from app.services.email_service import SMTPEmailService
+from app.services.observer import (
+    CAMPAIGN_SENT,
+    NotificationEvent,
+    notification_publisher,
+)
+from app.services.recipient_selection import email_recipient_selector
 
 RecipientSelector = Callable[[NotificationEvent], Iterable[str]]
 
@@ -74,3 +86,35 @@ class EmailNotificationObserver:
                 continue
             seen.add(recipient)
             yield recipient
+
+
+email_notification_observer: EmailNotificationObserver | None = None
+
+
+def register_email_observer(settings: Settings | None = None) -> bool:
+    global email_notification_observer
+
+    values = settings if settings is not None else get_settings()
+    if not values.notification_email_enabled:
+        if email_notification_observer is not None:
+            notification_publisher.unsubscribe(email_notification_observer)
+            email_notification_observer = None
+        return False
+
+    service = SMTPEmailService(values)
+    try:
+        service.validate_configuration()
+    except ValueError as exc:
+        raise EmailConfigurationError(
+            f"Notification email configuration is invalid: {exc}"
+        ) from None
+
+    if email_notification_observer is None:
+        email_notification_observer = EmailNotificationObserver(
+            sender=SmtpEmailSender(service),
+            recipient_selector=email_recipient_selector,
+            delivery_store=EmailDeliveryStore(),
+        )
+    if not notification_publisher.is_subscribed(email_notification_observer):
+        notification_publisher.subscribe(email_notification_observer)
+    return True

@@ -10,6 +10,7 @@ from starlette.responses import RedirectResponse
 
 from app.config import get_settings
 from app.routers import api_router, router, static_files, templates
+from app.services.email_notifications import register_email_observer
 from app.services.website_notifications import register_website_observer
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     from app.seed import seed
 
     register_website_observer()
+    register_email_observer()
     seed(reset=False)
     yield
 
@@ -80,7 +82,9 @@ async def unauthorized_redirect_handler(request: Request, exc: Exception):
 async def forbidden_handler(request: Request, exc: Exception):
     detail = str(getattr(exc, "detail", ""))
     if request.url.path.startswith("/api"):
-        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": detail})
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN, content={"detail": detail}
+        )
     if "CSRF" in detail:
         message = "Your security token expired. Reload the page and try again."
     else:

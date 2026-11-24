@@ -115,10 +115,8 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_from_name: str = "UWI Connect"
     smtp_use_tls: bool = True
-    smtp_from_address: str = ""
-    smtp_use_implicit_tls: bool = False
-    smtp_use_starttls: bool = True
     smtp_timeout: float = Field(default=10.0, gt=0, le=60)
+    notification_email_enabled: bool = False
 
     @field_validator("app_port", mode="before")
     @classmethod

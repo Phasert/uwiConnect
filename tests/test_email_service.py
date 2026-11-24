@@ -44,6 +44,7 @@ def test_settings_load_named_smtp_environment_variables(monkeypatch):
         "SMTP_FROM_NAME": "UWI Connect",
         "SMTP_USE_TLS": "true",
         "SMTP_TIMEOUT": "12",
+        "NOTIFICATION_EMAIL_ENABLED": "true",
     }
     for name, value in variables.items():
         monkeypatch.setenv(name, value)
@@ -63,6 +64,7 @@ def test_settings_load_named_smtp_environment_variables(monkeypatch):
     assert settings.smtp_from_name == "UWI Connect"
     assert settings.smtp_use_tls is True
     assert settings.smtp_timeout == 12
+    assert settings.notification_email_enabled is True
 
 
 def test_starttls_delivery_supports_recipients_html_and_attachments(
@@ -96,7 +98,9 @@ def test_starttls_delivery_supports_recipients_html_and_attachments(
     assert message["To"] == "first@example.test, second@example.test"
     assert message["Subject"] == "Subject"
     assert message.get_body(preferencelist=("plain",)).get_content() == "Plain body\n"
-    assert message.get_body(preferencelist=("html",)).get_content() == "<p>HTML body</p>\n"
+    assert (
+        message.get_body(preferencelist=("html",)).get_content() == "<p>HTML body</p>\n"
+    )
     assert [part.get_filename() for part in message.iter_attachments()] == [
         "receipt.txt",
         "report.csv",
@@ -125,6 +129,11 @@ def test_invalid_or_missing_configuration_fails_before_connecting(
         )
 
     factory.assert_not_called()
+
+
+def test_timeout_is_bounded() -> None:
+    with pytest.raises(ValueError):
+        smtp_settings(smtp_timeout=61)
 
 
 def test_invalid_credentials_are_logged_without_secrets(monkeypatch, caplog):

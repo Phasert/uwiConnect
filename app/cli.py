@@ -222,8 +222,11 @@ def _campaign_processor_lock(lock_path: Path | None = None) -> Iterator[bool]:
 
 def cmd_process_campaigns(args: argparse.Namespace) -> None:
     """Process due campaigns and recover campaigns left in sending state."""
+    from app.config import get_settings
     from app.database import ensure_db_and_tables
     from app.services import campaigns
+    from app.services.email_notifications import register_email_observer
+    from app.services.email_sender import EmailConfigurationError
     from app.services.website_notifications import register_website_observer
 
     with _campaign_processor_lock() as acquired:
@@ -232,6 +235,11 @@ def cmd_process_campaigns(args: argparse.Namespace) -> None:
             return
         ensure_db_and_tables()
         register_website_observer()
+        try:
+            register_email_observer(get_settings())
+        except EmailConfigurationError as exc:
+            print(f"Notification email configuration error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
         result = campaigns.process_due_campaigns()
         print(
             f"Campaign processor: {result['processed']} processed, "
@@ -275,7 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--port", type=int, default=None, help="Bind port")
     reload_group = p_run.add_mutually_exclusive_group()
     reload_group.add_argument(
-        "--reload", dest="reload", action="store_true", default=None, help="Enable auto-reload"
+        "--reload",
+        dest="reload",
+        action="store_true",
+        default=None,
+        help="Enable auto-reload",
     )
     reload_group.add_argument(
         "--no-reload", dest="reload", action="store_false", help="Disable auto-reload"
@@ -302,10 +314,18 @@ def build_parser() -> argparse.ArgumentParser:
         "report",
         help="Export docs/report.md to PDF; merges judge.md and exports Guide transcripts",
     )
-    p_report.add_argument("--name", required=True, help="Student name (printed on the PDF cover)")
-    p_report.add_argument("--id", dest="student_id", required=True, help="Student ID (PDF only)")
-    p_report.add_argument("--src", default=None, help="Markdown path (default: docs/report.md)")
-    p_report.add_argument("--output", default=None, help="PDF path (default: docs/report.pdf)")
+    p_report.add_argument(
+        "--name", required=True, help="Student name (printed on the PDF cover)"
+    )
+    p_report.add_argument(
+        "--id", dest="student_id", required=True, help="Student ID (PDF only)"
+    )
+    p_report.add_argument(
+        "--src", default=None, help="Markdown path (default: docs/report.md)"
+    )
+    p_report.add_argument(
+        "--output", default=None, help="PDF path (default: docs/report.pdf)"
+    )
     p_report.set_defaults(func=cmd_report)
 
     p_transcripts = sub.add_parser(
@@ -323,8 +343,12 @@ def build_parser() -> argparse.ArgumentParser:
         "usecase",
         help="Render docs/diagrams/use-case.json to a UML use-case PNG",
     )
-    p_usecase.add_argument("--spec", default=None, help="JSON spec (default: docs/diagrams/use-case.json)")
-    p_usecase.add_argument("--output", default=None, help="PNG path (default: docs/diagrams/use-case.png)")
+    p_usecase.add_argument(
+        "--spec", default=None, help="JSON spec (default: docs/diagrams/use-case.json)"
+    )
+    p_usecase.add_argument(
+        "--output", default=None, help="PNG path (default: docs/diagrams/use-case.png)"
+    )
     p_usecase.set_defaults(func=cmd_usecase)
 
     p_skills_verify = sub.add_parser(
