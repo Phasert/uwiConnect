@@ -10,4 +10,14 @@ class Listing(SQLModel, table=True):
     status: str
     rejection_reason: str | None = None
     deletion_requested: bool = False
+    company_name: str | None = None
+    location: str | None = None
+    application_instructions: str | None = None
+    application_deadline: str | None = None
+    faculty: str | None = None
+    department: str | None = None
+    event_date: str | None = None
+    event_time: str | None = None
+    category: str | None = None
+    registration_information: str | None = None
     created_at: str

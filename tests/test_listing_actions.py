@@ -7,6 +7,7 @@ from app.main import app
 from app.seed import seed
 from app.services import boards
 from app.services.observer import notification_publisher
+from tests.listing_test_helpers import complete_listing_payload
 
 
 def setup_module() -> None:
@@ -35,7 +36,9 @@ def _login(email: str, password: str = "alumni-dev") -> dict:
 def _submit(user_id: int, kind: str, title: str) -> int:
     response = client.post(
         "/api/boards/listings",
-        json={"kind": kind, "title": title, "body": "Original body"},
+        json=complete_listing_payload(
+            {"kind": kind, "title": title, "body": "Original body"}
+        ),
         headers={"X-User-Id": str(user_id)},
     )
     assert response.status_code == 200
@@ -64,7 +67,15 @@ def test_owner_edits_pending_listing():
     response = _edit(
         alum["id"],
         listing_id,
-        {"kind": "event", "title": " Updated title ", "body": " Updated body "},
+        {
+            "kind": "event",
+            "title": " Updated title ",
+            "body": " Updated body ",
+            "event_date": "2099-08-20",
+            "event_time": "17:30",
+            "location": "UWI SPEC",
+            "category": "Social",
+        },
     )
 
     assert response.status_code == 200

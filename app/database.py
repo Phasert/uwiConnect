@@ -100,6 +100,29 @@ def _ensure_listing_deletion_requested_column() -> None:
             )
 
 
+def _ensure_listing_detail_columns() -> None:
+    inspector = inspect(engine)
+    if "listing" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("listing")}
+    required_columns = (
+        "company_name",
+        "location",
+        "application_instructions",
+        "application_deadline",
+        "faculty",
+        "department",
+        "event_date",
+        "event_time",
+        "category",
+        "registration_information",
+    )
+    for column in required_columns:
+        if column not in columns:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE listing ADD COLUMN {column} VARCHAR"))
+
+
 def create_db_and_tables() -> None:
     importlib.import_module("app.models")
 
@@ -108,6 +131,7 @@ def create_db_and_tables() -> None:
     _ensure_campaign_scheduled_at_column()
     _ensure_listing_rejection_reason_column()
     _ensure_listing_deletion_requested_column()
+    _ensure_listing_detail_columns()
 
 
 def drop_all() -> None:

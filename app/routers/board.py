@@ -28,6 +28,16 @@ class ListingBody(BaseModel):
     kind: str = Field(description="job | event")
     title: str
     body: str
+    company_name: str | None = None
+    location: str | None = None
+    application_instructions: str | None = None
+    application_deadline: str | None = None
+    faculty: str | None = None
+    department: str | None = None
+    event_date: str | None = None
+    event_time: str | None = None
+    category: str | None = None
+    registration_information: str | None = None
 
 
 class ListingEditBody(ListingBody):
@@ -81,17 +91,29 @@ def verify_email(x_user_id: str | None = Header(default=None)) -> dict[str, Any]
 
 
 @router.get("/boards")
-def browse(kind: str | None = None, q: str | None = None) -> dict[str, Any]:
-    return {"listings": boards.browse_published(kind=kind, q=q)}
+def browse(
+    kind: str | None = None,
+    q: str | None = None,
+    category: str | None = None,
+    faculty: str | None = None,
+    department: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "listings": boards.browse_published(
+            kind=kind,
+            q=q,
+            category=category,
+            faculty=faculty,
+            department=department,
+        )
+    }
 
 
 @router.post("/boards/listings")
 def submit(
     body: ListingBody, x_user_id: str | None = Header(default=None)
 ) -> dict[str, Any]:
-    result = boards.submit_listing(
-        _actor_id(x_user_id), kind=body.kind, title=body.title, body=body.body
-    )
+    result = boards.submit_listing(_actor_id(x_user_id), **body.model_dump())
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
@@ -104,11 +126,7 @@ def edit(
     x_user_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
     result = boards.edit_listing(
-        _actor_id(x_user_id),
-        listing_id,
-        kind=body.kind,
-        title=body.title,
-        body=body.body,
+        _actor_id(x_user_id), listing_id, body.model_dump(exclude_unset=True)
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
