@@ -1,4 +1,5 @@
 import pytest
+from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -16,9 +17,14 @@ def client():
 
 
 def _login(client: TestClient) -> TestClient:
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     response = client.post(
         "/login",
-        data={"username": ALUMNI_EMAIL, "password": PASSWORD},
+        data={
+            "username": ALUMNI_EMAIL,
+            "password": PASSWORD,
+            "csrf_token": csrf_token,
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303

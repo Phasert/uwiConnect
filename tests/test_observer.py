@@ -34,12 +34,17 @@ class FailingObserver:
         raise self.error
 
 
-def test_notify_preserves_original_none_return_when_no_observers() -> None:
+def test_notify_returns_empty_result_when_no_observers() -> None:
     publisher = NotificationPublisher()
 
-    assert publisher.notify(
+    result = publisher.notify(
         NotificationEvent(CAMPAIGN_SENT, campaign_id=3)
-    ) is None
+    )
+
+    assert result.succeeded is False
+    assert result.succeeded_observers == ()
+    assert result.attempted_observers == ()
+    assert result.failed_observers == ()
 
 
 def test_notify_with_result_no_observers_has_empty_attempted_and_failed_lists() -> None:
@@ -144,12 +149,16 @@ def test_notify_dispatches_one_stable_event_to_every_observer() -> None:
     publisher.subscribe(second)
     event = NotificationEvent(CAMPAIGN_SENT, campaign_id=3, message="Campaign: ...")
 
-    publisher.notify(event)
+    result = publisher.notify(event)
 
     assert first.events == [event]
     assert second.events == [event]
     assert first.events[0] is second.events[0] is event
     assert isinstance(first, NotificationObserver)
+    assert result.succeeded is True
+    assert result.succeeded_observers == (first, second)
+    assert result.attempted_observers == (first, second)
+    assert result.failed_observers == ()
 
 
 def test_failing_observer_does_not_block_other_observers(caplog) -> None:
@@ -163,11 +172,15 @@ def test_failing_observer_does_not_block_other_observers(caplog) -> None:
     publisher.subscribe(after)
 
     with caplog.at_level(logging.ERROR):
-        publisher.notify(event)
+        result = publisher.notify(event)
 
     assert len(before.events) == 1 and before.events[0] is event
     assert len(failing.events) == 1 and failing.events[0] is event
     assert len(after.events) == 1 and after.events[0] is event
+    assert result.succeeded is False
+    assert result.succeeded_observers == (before, after)
+    assert result.attempted_observers == (before, failing, after)
+    assert result.failed_observers == (failing,)
     assert len(caplog.records) == 1
     record = caplog.records[0]
     assert record.levelno == logging.ERROR
@@ -214,6 +227,45 @@ def test_two_failing_observers_followed_by_healthy_observer(caplog) -> None:
         and f"event_id={event.event_id}" in message
         for message in messages
     )
+
+
+def test_repeated_dispatch_results_are_independent() -> None:
+    publisher = NotificationPublisher()
+
+    def sometimes_fails(event: NotificationEvent) -> None:
+        if event.campaign_id == 101:
+            raise RuntimeError("first call fails")
+
+    publisher.subscribe(sometimes_fails)
+
+    first = publisher.notify(NotificationEvent(CAMPAIGN_SENT, campaign_id=101))
+    second = publisher.notify(NotificationEvent(CAMPAIGN_SENT, campaign_id=202))
+
+    assert first.succeeded is False
+    assert first.failed_observers == (sometimes_fails,)
+    assert first.succeeded_observers == ()
+    assert second.succeeded is True
+    assert second.failed_observers == ()
+    assert second.succeeded_observers == (sometimes_fails,)
+
+
+def test_dispatch_uses_initial_observer_snapshot() -> None:
+    publisher = NotificationPublisher()
+    second = RecordingObserver()
+
+    def remove_second(event: NotificationEvent) -> None:
+        publisher.unsubscribe(second)
+
+    publisher.subscribe(remove_second)
+    publisher.subscribe(second)
+    event = NotificationEvent(CAMPAIGN_SENT, campaign_id=3)
+
+    result = publisher.notify(event)
+
+    assert result.attempted_observers == (remove_second, second)
+    assert result.succeeded_observers == (remove_second, second)
+    assert result.failed_observers == ()
+    assert second.events == [event]
 
 
 def test_failing_observer_remains_subscribed_for_future_events(caplog) -> None:

@@ -73,7 +73,7 @@ def test_website_observer_failure_does_not_become_successful_auxiliary_delivery(
         notification_publisher.subscribe(website_notification_observer)
         monkeypatch.setattr(
             notification_publisher,
-            "notify_with_result",
+            "notify",
             publish_with_website_failure,
         )
         result = campaigns.process_due_campaigns(
@@ -184,10 +184,10 @@ def test_crash_retry_recovers_sending_campaign(test_session, monkeypatch) -> Non
 
     with isolate_publisher():
         register_website_observer()
-        original_notify = notification_publisher.notify_with_result
+        original_notify = notification_publisher.notify
         monkeypatch.setattr(
             notification_publisher,
-            "notify_with_result",
+            "notify",
             lambda event: NotificationPublishResult(
                 succeeded=False,
                 attempted_observers=(website_notification_observer,),
@@ -201,7 +201,7 @@ def test_crash_retry_recovers_sending_campaign(test_session, monkeypatch) -> Non
         assert campaign.status == "sending"
         monkeypatch.setattr(
             notification_publisher,
-            "notify_with_result",
+            "notify",
             original_notify,
         )
         recovered = campaigns.process_due_campaigns(
@@ -276,7 +276,7 @@ def test_cli_process_campaigns_observer_failure_keeps_campaign_sending(
     with isolate_publisher():
         monkeypatch.setattr(
             notification_publisher,
-            "notify_with_result",
+            "notify",
             lambda event: NotificationPublishResult(
                 succeeded=False,
                 attempted_observers=(website_notification_observer,),

@@ -1,3 +1,4 @@
+from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, text
 from sqlmodel import create_engine
@@ -78,11 +79,13 @@ def test_dashboard_displays_saved_rejection_reason():
         headers={"X-User-Id": str(admin["id"])},
     )
     assert response.status_code == 200
+    csrf_token = csrf_token_from_html(client.get("/login").text)
     login = client.post(
         "/login",
         data={
             "username": "alumni.verified@my.uwi.edu",
             "password": "alumni-dev",
+            "csrf_token": csrf_token,
         },
         follow_redirects=False,
     )
