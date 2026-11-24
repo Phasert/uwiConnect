@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -18,9 +18,15 @@ from app.services.observer import (
     notification_publisher,
 )
 
+TRINIDAD_TIMEZONE = timezone(timedelta(hours=-4))
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _local_today() -> date:
+    return datetime.now(TRINIDAD_TIMEZONE).date()
 
 
 _DETAIL_FIELDS = (
@@ -89,7 +95,23 @@ def browse_published(
     department: str | None = None,
 ) -> list[dict[str, Any]]:
     with Session(engine) as session:
-        stmt = select(Listing).where(Listing.status == "published")
+        today = _local_today().isoformat()
+        stmt = select(Listing).where(
+            Listing.status == "published",
+            or_(
+                and_(
+                    Listing.kind == "job",
+                    or_(
+                        Listing.application_deadline.is_(None),
+                        Listing.application_deadline >= today,
+                    ),
+                ),
+                and_(
+                    Listing.kind == "event",
+                    or_(Listing.event_date.is_(None), Listing.event_date >= today),
+                ),
+            ),
+        )
         if kind:
             stmt = stmt.where(Listing.kind == kind)
         if q:
@@ -110,7 +132,7 @@ def browse_published(
         if department:
             stmt = stmt.where(Listing.department.ilike(department))
         stmt = stmt.order_by(Listing.id.desc())
-        return [r.model_dump() for r in session.exec(stmt).all()]
+        return [row.model_dump() for row in session.exec(stmt).all()]
 
 
 def submit_listing(
