@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_
 from sqlmodel import Session, select
 
 from app.database import engine
-from app.models.listing import Listing
+from app.models.listing import Listing, ListingRevision
 from app.services.accounts import require_verified_alumni
 from app.services.board_auth import get_user
 from app.services.observer import (
@@ -84,6 +84,27 @@ def _validate_listing_data(data: dict[str, Any]) -> str | None:
         except ValueError:
             return "event_time must use HH:MM or HH:MM:SS"
     return None
+
+
+def _prepare_listing_update(
+    listing: Listing, updates: dict[str, Any]
+) -> tuple[dict[str, Any], str | None]:
+    data = listing.model_dump()
+    data.update(updates)
+    if data.get("kind") == "job":
+        for field in ("event_date", "event_time", "registration_information"):
+            data[field] = None
+    elif data.get("kind") == "event":
+        for field in (
+            "company_name",
+            "application_instructions",
+            "application_deadline",
+            "faculty",
+            "department",
+        ):
+            data[field] = None
+    data = _clean_listing_data(data)
+    return data, _validate_listing_data(data)
 
 
 def browse_published(
@@ -181,22 +202,7 @@ def edit_listing(
             return {"ok": False, "error": "only pending or rejected listings can be edited"}
         if listing.deletion_requested:
             return {"ok": False, "error": "listing has a pending deletion request"}
-        data = listing.model_dump()
-        data.update(updates)
-        if data.get("kind") == "job":
-            for field in ("event_date", "event_time", "category", "registration_information"):
-                data[field] = None
-        elif data.get("kind") == "event":
-            for field in (
-                "company_name",
-                "application_instructions",
-                "application_deadline",
-                "faculty",
-                "department",
-            ):
-                data[field] = None
-        data = _clean_listing_data(data)
-        validation_error = _validate_listing_data(data)
+        data, validation_error = _prepare_listing_update(listing, updates)
         if validation_error:
             return {"ok": False, "error": validation_error}
 
@@ -213,6 +219,41 @@ def edit_listing(
         return {"ok": True, "listing": listing.model_dump()}
 
 
+def request_revision(
+    author_id: int, listing_id: int, updates: dict[str, Any]
+) -> dict[str, Any]:
+    with Session(engine) as session:
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        if listing.author_id != author_id:
+            return {"ok": False, "error": "listing owner only"}
+        if listing.status != "published":
+            return {"ok": False, "error": "only published listings can be revised"}
+        if listing.deletion_requested:
+            return {"ok": False, "error": "listing has a pending deletion request"}
+        if session.get(ListingRevision, listing_id):
+            return {"ok": False, "error": "revision already requested"}
+        data, validation_error = _prepare_listing_update(listing, updates)
+        if validation_error:
+            return {"ok": False, "error": validation_error}
+
+        revision = ListingRevision(
+            listing_id=listing_id,
+            author_id=author_id,
+            status="pending",
+            requested_at=_now(),
+            kind=data["kind"],
+            title=data["title"],
+            body=data["body"],
+            **{field: data.get(field) for field in _DETAIL_FIELDS},
+        )
+        session.add(revision)
+        session.commit()
+        session.refresh(revision)
+        return {"ok": True, "revision": revision.model_dump()}
+
+
 def request_deletion(author_id: int, listing_id: int) -> dict[str, Any]:
     with Session(engine) as session:
         listing = session.get(Listing, listing_id)
@@ -222,6 +263,8 @@ def request_deletion(author_id: int, listing_id: int) -> dict[str, Any]:
             return {"ok": False, "error": "listing owner only"}
         if listing.deletion_requested:
             return {"ok": False, "error": "deletion already requested"}
+        if session.get(ListingRevision, listing_id):
+            return {"ok": False, "error": "listing has a pending revision request"}
 
         listing.deletion_requested = True
         session.add(listing)
@@ -237,7 +280,19 @@ def list_by_author(author_id: int) -> list[dict[str, Any]]:
             .where(Listing.author_id == author_id)
             .order_by(Listing.id.desc())
         )
-        return [r.model_dump() for r in session.exec(stmt).all()]
+        rows = session.exec(stmt).all()
+        revision_ids = set(
+            session.exec(
+                select(ListingRevision.listing_id).where(
+                    ListingRevision.author_id == author_id,
+                    ListingRevision.status == "pending",
+                )
+            ).all()
+        )
+        return [
+            {**row.model_dump(), "revision_requested": row.id in revision_ids}
+            for row in rows
+        ]
 
 
 def list_pending() -> list[dict[str, Any]]:
@@ -261,6 +316,83 @@ def list_deletion_requests(admin_id: int) -> dict[str, Any]:
         return {"ok": True, "listings": [row.model_dump() for row in rows]}
 
 
+def list_revision_requests(admin_id: int) -> dict[str, Any]:
+    user = get_user(admin_id)
+    if not user or user["role"] != "admin":
+        return {"ok": False, "error": "admin only"}
+    with Session(engine) as session:
+        revisions = session.exec(
+            select(ListingRevision)
+            .where(ListingRevision.status == "pending")
+            .order_by(ListingRevision.requested_at)
+        ).all()
+        requests = []
+        for revision in revisions:
+            listing = session.get(Listing, revision.listing_id)
+            if listing:
+                proposed = revision.model_dump()
+                requests.append(
+                    {
+                        "listing_id": revision.listing_id,
+                        "requesting_author_id": revision.author_id,
+                        "status": revision.status,
+                        "original": listing.model_dump(),
+                        "proposed": {
+                            field: proposed[field]
+                            for field in ("kind", "title", "body", *_DETAIL_FIELDS)
+                        },
+                        "requested_at": revision.requested_at,
+                    }
+                )
+        return {"ok": True, "revision_requests": requests}
+
+
+def approve_revision(admin_id: int, listing_id: int) -> dict[str, Any]:
+    user = get_user(admin_id)
+    if not user or user["role"] != "admin":
+        return {"ok": False, "error": "admin only"}
+    with Session(engine) as session:
+        listing = session.get(Listing, listing_id)
+        revision = session.get(ListingRevision, listing_id)
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        if revision is None or revision.status != "pending":
+            return {"ok": False, "error": "revision is not awaiting review"}
+        if listing.status != "published" or listing.deletion_requested:
+            return {"ok": False, "error": "listing is not eligible for revision"}
+        data = revision.model_dump()
+        validation_error = _validate_listing_data(data)
+        if validation_error:
+            return {"ok": False, "error": validation_error}
+
+        listing.kind = data["kind"]
+        listing.title = data["title"]
+        listing.body = data["body"]
+        for field in _DETAIL_FIELDS:
+            setattr(listing, field, data.get(field))
+        session.add(listing)
+        session.delete(revision)
+        session.commit()
+        session.refresh(listing)
+        return {"ok": True, "listing": listing.model_dump()}
+
+
+def deny_revision(admin_id: int, listing_id: int) -> dict[str, Any]:
+    user = get_user(admin_id)
+    if not user or user["role"] != "admin":
+        return {"ok": False, "error": "admin only"}
+    with Session(engine) as session:
+        listing = session.get(Listing, listing_id)
+        revision = session.get(ListingRevision, listing_id)
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        if revision is None or revision.status != "pending":
+            return {"ok": False, "error": "revision is not awaiting review"}
+        session.delete(revision)
+        session.commit()
+        return {"ok": True, "listing_id": listing_id, "status": "denied"}
+
+
 def approve_deletion(admin_id: int, listing_id: int) -> dict[str, Any]:
     user = get_user(admin_id)
     if not user or user["role"] != "admin":
@@ -271,6 +403,9 @@ def approve_deletion(admin_id: int, listing_id: int) -> dict[str, Any]:
             return {"ok": False, "error": "listing not found"}
         if not listing.deletion_requested:
             return {"ok": False, "error": "deletion is not awaiting review"}
+        revision = session.get(ListingRevision, listing_id)
+        if revision:
+            session.delete(revision)
         session.delete(listing)
         session.commit()
     return {"ok": True, "listing_id": listing_id, "deleted": True}

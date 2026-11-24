@@ -133,6 +133,20 @@ def edit(
     return result
 
 
+@router.post("/boards/listings/{listing_id}/revision-request")
+def request_revision(
+    listing_id: int,
+    body: ListingEditBody,
+    x_user_id: str | None = Header(default=None),
+) -> dict[str, Any]:
+    result = boards.request_revision(
+        _actor_id(x_user_id), listing_id, body.model_dump(exclude_unset=True)
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
 @router.post("/boards/listings/{listing_id}/deletion-request")
 def request_deletion(
     listing_id: int, x_user_id: str | None = Header(default=None)
@@ -157,6 +171,34 @@ def deletion_requests(x_user_id: str | None = Header(default=None)) -> dict[str,
     if not result.get("ok"):
         raise HTTPException(status_code=403, detail=result.get("error"))
     return {"listings": result["listings"]}
+
+
+@router.get("/admin/listings/revision-requests")
+def revision_requests(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
+    result = boards.list_revision_requests(_actor_id(x_user_id))
+    if not result.get("ok"):
+        raise HTTPException(status_code=403, detail=result.get("error"))
+    return {"revision_requests": result["revision_requests"]}
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/approve")
+def approve_revision(
+    listing_id: int, x_user_id: str | None = Header(default=None)
+) -> dict[str, Any]:
+    result = boards.approve_revision(_actor_id(x_user_id), listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/listings/{listing_id}/revision-request/deny")
+def deny_revision(
+    listing_id: int, x_user_id: str | None = Header(default=None)
+) -> dict[str, Any]:
+    result = boards.deny_revision(_actor_id(x_user_id), listing_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 @router.post("/admin/listings/{listing_id}/deletion-request/approve")
