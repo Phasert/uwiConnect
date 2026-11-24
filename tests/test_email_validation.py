@@ -98,6 +98,37 @@ def test_uppercase_registration_stores_lowercase_email() -> None:
     assert response.status_code == 200
     assert response.json()["user"]["email"] == "new.student@my.uwi.edu"
     assert "password" not in response.json()["user"]
+    assert "password_hash" not in response.json()["user"]
+
+
+def test_administrative_user_response_never_contains_password_fields() -> None:
+    response = client.get("/api/users")
+
+    assert response.status_code == 200
+    assert response.json()
+    for user in response.json():
+        assert "password" not in user
+        assert "password_hash" not in user
+
+
+def test_database_user_model_dump_never_contains_password() -> None:
+    with Session(engine) as session:
+        user = User(
+            username="Serialized.User@UWI.EDU",
+            email="Serialized.User@UWI.EDU",
+            password=encrypt_password("serialized-password"),
+            role="alumni",
+            email_verified=1,
+            display_name="Serialized User",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        dumped = user.model_dump()
+
+    assert "password" not in dumped
+    assert "password_hash" not in dumped
 
 
 def test_duplicate_registration_is_rejected_case_insensitively() -> None:
@@ -142,6 +173,7 @@ def test_login_accepts_different_email_capitalization() -> None:
     assert response.status_code == 200
     assert response.json()["user"]["email"] == "case.login@uwi.edu"
     assert "password" not in response.json()["user"]
+    assert "password_hash" not in response.json()["user"]
 
 
 def test_login_accepts_existing_mixed_case_account() -> None:
@@ -168,6 +200,7 @@ def test_login_accepts_existing_mixed_case_account() -> None:
     assert response.status_code == 200
     assert response.json()["user"]["email"] == "Existing.Mixed@MY.UWI.EDU"
     assert "password" not in response.json()["user"]
+    assert "password_hash" not in response.json()["user"]
 
 
 @pytest.mark.parametrize(
@@ -211,6 +244,7 @@ def test_verification_accepts_existing_mixed_case_account() -> None:
     assert result["ok"] is True
     assert result["user"]["email_verified"] == 1
     assert "password" not in result["user"]
+    assert "password_hash" not in result["user"]
 
 
 def test_verification_rejects_unapproved_account() -> None:

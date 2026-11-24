@@ -95,6 +95,14 @@ def _send_campaign(user_id: int, campaign_id: int):
     )
 
 
+def _schedule_campaign(user_id: int, campaign_id: int, scheduled_at: str):
+    return client.post(
+        f"/api/admin/campaigns/{campaign_id}/schedule",
+        json={"scheduled_at": scheduled_at},
+        headers={"X-User-Id": str(user_id)},
+    )
+
+
 def test_publishing_job_emits_one_listing_published_event(events):
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
@@ -259,3 +267,51 @@ def test_sending_campaign_via_api_notifies_verified_alumni_only():
     assert rows[0]["message"] == f"Campaign: {subject} - {body}"
     assert not any(subject in row["message"] for row in _inbox(unverified["id"]))
     assert not any(subject in row["message"] for row in _inbox(admin["id"]))
+
+
+def test_schedule_campaign_via_api():
+    admin = _login("admin@uwi.edu", "admin-dev")
+    campaign_id = _create_campaign(
+        admin["id"],
+        "Scheduled API Campaign",
+        "Scheduled content.",
+    )["campaign"]["id"]
+
+    r = _schedule_campaign(
+        admin["id"],
+        campaign_id,
+        "2099-01-02T09:30:00-04:00",
+    )
+
+    assert r.status_code == 200
+    assert r.json()["campaign"]["status"] == "scheduled"
+    assert r.json()["campaign"]["scheduled_at"] == "2099-01-02T13:30:00+00:00"
+
+
+def test_schedule_campaign_via_api_rejects_invalid_and_sent_campaign():
+    admin = _login("admin@uwi.edu", "admin-dev")
+    campaign_id = _create_campaign(
+        admin["id"],
+        "Invalid Schedule Campaign",
+        "No delivery.",
+    )["campaign"]["id"]
+
+    invalid = _schedule_campaign(
+        admin["id"],
+        campaign_id,
+        "2020-01-01T00:00:00Z",
+    )
+    assert invalid.status_code == 400
+
+    sent_id = _create_campaign(
+        admin["id"],
+        "Already Sent Campaign",
+        "Immediate content.",
+    )["campaign"]["id"]
+    assert _send_campaign(admin["id"], sent_id).status_code == 200
+    sent_schedule = _schedule_campaign(
+        admin["id"],
+        sent_id,
+        "2099-01-01T00:00:00Z",
+    )
+    assert sent_schedule.status_code == 400

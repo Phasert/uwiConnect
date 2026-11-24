@@ -54,6 +54,13 @@ class NotificationObserver(Protocol):
     def __call__(self, event: NotificationEvent) -> None: ...
 
 
+@dataclass(frozen=True)
+class NotificationPublishResult:
+    succeeded: bool
+    attempted_observers: tuple[NotificationObserver, ...] = ()
+    failed_observers: tuple[NotificationObserver, ...] = ()
+
+
 def _observer_identity(observer: NotificationObserver) -> str:
     qualname = getattr(observer, "__qualname__", None)
     if qualname is not None:
@@ -73,17 +80,41 @@ class NotificationPublisher:
         if observer in self._observers:
             self._observers.remove(observer)
 
-    def notify(self, event: NotificationEvent) -> None:
-        for observer in tuple(self._observers):
+    def is_subscribed(self, observer: NotificationObserver) -> bool:
+        return observer in self._observers
+
+    def notify_with_result(
+        self, event: NotificationEvent
+    ) -> NotificationPublishResult:
+        attempted_observers = tuple(self._observers)
+        if not attempted_observers:
+            return NotificationPublishResult(
+                succeeded=False,
+                attempted_observers=(),
+                failed_observers=(),
+            )
+        all_succeeded = True
+        failed_observers: list[NotificationObserver] = []
+        for observer in attempted_observers:
             try:
                 observer(event)
             except Exception:
+                all_succeeded = False
+                failed_observers.append(observer)
                 logger.exception(
                     "Notification observer %s failed for event type %s (event_id=%s)",
                     _observer_identity(observer),
                     event.event_type,
                     event.event_id,
                 )
+        return NotificationPublishResult(
+            succeeded=all_succeeded,
+            attempted_observers=attempted_observers,
+            failed_observers=tuple(failed_observers),
+        )
+
+    def notify(self, event: NotificationEvent) -> None:
+        self.notify_with_result(event)
 
 
 notification_publisher = NotificationPublisher()

@@ -39,6 +39,10 @@ class CampaignBody(BaseModel):
     body: str
 
 
+class ScheduleCampaignBody(BaseModel):
+    scheduled_at: str
+
+
 def _actor_id(x_user_id: str | None) -> int:
     if not x_user_id:
         raise HTTPException(status_code=401, detail="X-User-Id header required")
@@ -147,6 +151,22 @@ def send_campaign(
     campaign_id: int, x_user_id: str | None = Header(default=None)
 ) -> dict[str, Any]:
     result = campaigns.send_campaign(_actor_id(x_user_id), campaign_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/admin/campaigns/{campaign_id}/schedule")
+def schedule_campaign(
+    campaign_id: int,
+    body: ScheduleCampaignBody,
+    x_user_id: str | None = Header(default=None),
+) -> dict[str, Any]:
+    result = campaigns.schedule_campaign(
+        _actor_id(x_user_id),
+        campaign_id,
+        scheduled_at=body.scheduled_at,
+    )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result

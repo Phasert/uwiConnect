@@ -63,6 +63,16 @@ def _ensure_notification_event_id_column() -> None:
             )
 
 
+def _ensure_campaign_scheduled_at_column() -> None:
+    inspector = inspect(engine)
+    if "campaign" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("campaign")}
+    if "scheduled_at" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE campaign ADD COLUMN scheduled_at VARCHAR"))
+
+
 def _ensure_listing_rejection_reason_column() -> None:
     inspector = inspect(engine)
     if "listing" not in inspector.get_table_names():
@@ -80,6 +90,7 @@ def create_db_and_tables() -> None:
 
     SQLModel.metadata.create_all(engine)
     _ensure_notification_event_id_column()
+    _ensure_campaign_scheduled_at_column()
     _ensure_listing_rejection_reason_column()
 
 
