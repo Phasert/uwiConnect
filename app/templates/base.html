@@ -21,7 +21,10 @@
 </head>
 
 <body>
+    <a class="skip-link visually-hidden-focusable" href="#main-content">Skip to content</a>
+    <div id="main-content" tabindex="-1">
     {% block content %}{% endblock %}
+    </div>
 
     <div class="toast-container position-fixed bottom-0 end-0 p-3">
         <div id="appToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="2000">

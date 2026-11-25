@@ -3,22 +3,33 @@
 {% block content %}
 <div class="app-shell">
   <header class="app-topbar">
-    <a class="brand-wordmark" href="{{ url_for('index_view') }}">UWI Connect</a>
-    <nav class="app-topnav" aria-label="App">
-      <a class="{{ 'is-active' if request.url.path == '/app' }}" href="{{ url_for('user_home_view') }}">Home</a>
-      {% if user.role == 'alumni' %}
-      <a class="{{ 'is-active' if request.url.path.startswith('/app/dashboard') }}" href="{{ url_for('user_dashboard_view') }}">My submissions</a>
-      {% endif %}
-      {% if user.role == 'admin' %}
-      <a class="{{ 'is-active' if request.url.path.startswith('/admin') }}" href="{{ url_for('admin_home_view') }}">Admin</a>
-      {% endif %}
-      <a href="/docs">API docs</a>
-      {% include "partials/notification-bell.html" %}
-      <form method="post" action="{{ url_for('logout') }}" class="m-0">
-        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-        <button class="btn btn-link p-0 text-decoration-none" type="submit">Sign out</button>
-      </form>
-      <span class="app-user">{{ user.username }}</span>
+    <nav class="navbar navbar-expand-md app-navbar" aria-label="App">
+      <div class="container-xxl app-topbar-inner">
+        <a class="navbar-brand brand-wordmark" href="{{ url_for('index_view') }}">UWI Connect</a>
+        <button class="navbar-toggler app-topbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#appNavLinks" aria-controls="appNavLinks" aria-expanded="false"
+                aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse app-topnav-collapse" id="appNavLinks">
+          <div class="app-topnav">
+            <a class="app-nav-link{{ ' is-active' if request.url.path == '/app' }}" href="{{ url_for('user_home_view') }}">Home</a>
+            {% if user.role == 'alumni' %}
+            <a class="app-nav-link{{ ' is-active' if request.url.path.startswith('/app/dashboard') }}" href="{{ url_for('user_dashboard_view') }}">My submissions</a>
+            {% endif %}
+            {% if user.role == 'admin' %}
+            <a class="app-nav-link{{ ' is-active' if request.url.path.startswith('/admin') }}" href="{{ url_for('admin_home_view') }}">Admin</a>
+            {% endif %}
+            <a class="app-nav-link" href="/docs">API docs</a>
+            {% include "partials/notification-bell.html" %}
+            <form method="post" action="{{ url_for('logout') }}" class="m-0">
+              <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+              <button class="btn btn-link app-signout-button" type="submit">Sign out</button>
+            </form>
+            <span class="app-user">{{ user.username }}</span>
+          </div>
+        </div>
+      </div>
     </nav>
   </header>
   <main class="app-main">
