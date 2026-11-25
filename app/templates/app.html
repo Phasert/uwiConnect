@@ -1,44 +1,126 @@
 {% extends "authenticated-base.html" %}
+
+{% macro friendly_date(value) -%}
+  {%- if value and value|length >= 10 -%}
+    {%- set year = value[:4] -%}
+    {%- set month_number = value[5:7]|int -%}
+    {%- set day = value[8:10]|int -%}
+    {%- set months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] -%}
+    {{ day }} {{ months[month_number - 1] }} {{ year }}
+  {%- else -%}
+    {{ value or '' }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro friendly_time(value) -%}
+  {%- if value and value|length >= 5 -%}
+    {%- set hour = value[:2]|int -%}
+    {%- set minutes = value[3:5] -%}
+    {%- set suffix = 'a.m.' if hour < 12 else 'p.m.' -%}
+    {%- set display_hour = (hour % 12) or 12 -%}
+    {{ display_hour }}:{{ minutes }} {{ suffix }}
+  {%- else -%}
+    {{ value or '' }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro friendly_event_when(listing) -%}
+  {%- if listing.event_date and listing.event_time -%}
+    <time datetime="{{ listing.event_date ~ 'T' ~ listing.event_time }}">{{ friendly_date(listing.event_date) }} at {{ friendly_time(listing.event_time) }}</time>
+  {%- elif listing.event_date -%}
+    <time datetime="{{ listing.event_date }}">{{ friendly_date(listing.event_date) }}</time>
+  {%- endif -%}
+{%- endmacro %}
+
 {% block title %}Home · UWI Connect{% endblock %}
 
 {% block subpage_content %}
 <h1>Alumni boards</h1>
-<p>
-  Browse published boards and track campaign notifications through the UWI Connect API.
-  Seed listings and accounts are ready after <code>python manage.py init</code>.
-</p>
-<form action="{{ url_for('user_home_view') }}" method="get" class="row g-2 mb-4 align-items-center">
-  <div class="col-12 col-sm-6 col-lg-4">
-    <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Search titles and descriptions" aria-label="Search listings">
+<p>Discover published job opportunities and events shared by the UWI Connect community.</p>
+
+<form action="{{ url_for('user_home_view') }}" method="get" class="row g-2 mb-4 align-items-end">
+  <div class="col-12 col-sm-6 col-lg-5">
+    <label class="form-label visually-hidden" for="boardSearch">Search listings</label>
+    <input class="form-control" type="search" id="boardSearch" name="q" value="{{ q }}" placeholder="Search titles and descriptions" aria-label="Search listings">
   </div>
-  <div class="col-6 col-sm-3 col-lg-2">
-    <select class="form-select" name="kind" aria-label="Listing type">
+  <div class="col-6 col-sm-3 col-lg-3">
+    <label class="form-label visually-hidden" for="boardKind">Listing type</label>
+    <select class="form-select" id="boardKind" name="kind" aria-label="Listing type">
       <option value="">All types</option>
       <option value="job"{% if kind == "job" %} selected{% endif %}>Jobs</option>
       <option value="event"{% if kind == "event" %} selected{% endif %}>Events</option>
     </select>
   </div>
-  <div class="col-6 col-sm-3 col-lg-2">
+  <div class="col-6 col-sm-3 col-lg-2 d-grid">
     <button class="btn btn-primary w-100" type="submit">Search</button>
   </div>
 </form>
+
 <div class="row g-3 mb-4">
   {% for listing in listings %}
   <div class="col-12 col-md-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h2 class="card-title h5">{{ listing.title }}</h2>
-        <p class="card-subtitle mb-2 text-body-secondary">{{ listing.kind|title }}</p>
+    <article class="card h-100">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+          <h2 class="h5 mb-0">{{ listing.title }}</h2>
+          <span class="badge {% if listing.kind == 'event' %}bg-info text-dark{% else %}bg-primary{% endif %}">{{ listing.kind|title }}</span>
+        </div>
+
+        {% if listing.category %}
+        <p class="small text-body-secondary mb-2">Category: {{ listing.category }}</p>
+        {% endif %}
+
         <p class="card-text">{{ listing.body }}</p>
+
+        <ul class="list-unstyled small mb-3">
+          {% if listing.location %}
+          <li class="mb-1"><span class="text-body-secondary">Location:</span> {{ listing.location }}</li>
+          {% endif %}
+          {% if listing.kind == 'job' %}
+            {% if listing.company_name %}
+            <li class="mb-1"><span class="text-body-secondary">Organisation:</span> {{ listing.company_name }}</li>
+            {% endif %}
+            {% if listing.faculty %}
+            <li class="mb-1"><span class="text-body-secondary">Faculty:</span> {{ listing.faculty }}</li>
+            {% endif %}
+            {% if listing.department %}
+            <li class="mb-1"><span class="text-body-secondary">Department:</span> {{ listing.department }}</li>
+            {% endif %}
+            {% if listing.application_deadline %}
+            <li class="mb-1"><span class="text-body-secondary">Apply by:</span> <time datetime="{{ listing.application_deadline }}">{{ friendly_date(listing.application_deadline) }}</time></li>
+            {% endif %}
+            {% if listing.application_instructions %}
+            <li class="text-break"><span class="text-body-secondary">How to apply:</span> {{ listing.application_instructions }}</li>
+            {% endif %}
+          {% else %}
+            {% if listing.event_date or listing.event_time %}
+            <li class="mb-1"><span class="text-body-secondary">When:</span> {{ friendly_event_when(listing) }}</li>
+            {% endif %}
+            {% if listing.registration_information %}
+            <li class="text-break"><span class="text-body-secondary">Registration:</span> {{ listing.registration_information }}</li>
+            {% endif %}
+          {% endif %}
+        </ul>
+
+        {% if listing.created_at %}
+        <p class="mt-auto mb-0"><small class="text-body-secondary">Posted <time datetime="{{ listing.created_at }}">{{ friendly_date(listing.created_at) }}</time></small></p>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="card" role="status">
+      <div class="card-body">
+        <h2 class="h6">No listings found</h2>
+        <p class="text-body-secondary mb-0">Try another search term or choose a different listing type.</p>
       </div>
     </div>
   </div>
-  {% else %}
-  <p>No listings found</p>
   {% endfor %}
 </div>
+
 <div class="app-actions">
-  <a href="/docs">Open API docs</a>
   <a class="secondary" href="{{ url_for('user_home_view') }}">Browse boards</a>
   <a class="secondary" href="{{ url_for('user_dashboard_view') }}">My submissions</a>
 </div>
