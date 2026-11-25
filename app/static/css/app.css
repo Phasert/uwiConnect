@@ -12,6 +12,32 @@
   --brand-font-display: "Sora", "Segoe UI", sans-serif;
   --brand-font-body: "Outfit", "Segoe UI", sans-serif;
   --brand-radius: 0.5rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --brand-border: #dfe6ef;
+  --brand-shadow: 0 0.35rem 1rem rgba(16, 43, 74, 0.07);
+  --brand-focus: var(--brand-accent);
+  --brand-success: #2f7d5b;
+  --brand-warning: #c9a227;
+  --brand-danger: #b23b48;
+  --brand-info: #2d6f8a;
+
+  --bs-body-font-family: var(--brand-font-body);
+  --bs-body-color: var(--brand-ink);
+  --bs-success: var(--brand-success);
+  --bs-success-rgb: 47, 125, 91;
+  --bs-warning: var(--brand-warning);
+  --bs-warning-rgb: 201, 162, 39;
+  --bs-danger: var(--brand-danger);
+  --bs-danger-rgb: 178, 59, 72;
+  --bs-info: var(--brand-info);
+  --bs-info-rgb: 45, 111, 138;
 }
 
 *,
@@ -144,6 +170,11 @@ a {
   border-color: color-mix(in srgb, var(--brand-sidebar-text) 45%, transparent);
 }
 
+.landing-nav .navbar-toggler:focus-visible {
+  outline: 3px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
 .landing-nav .navbar-toggler-icon {
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 }
@@ -155,7 +186,7 @@ a {
 .landing-nav-actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
@@ -486,18 +517,80 @@ a {
   font-weight: 500;
 }
 
-.form-control {
-  border-radius: var(--brand-radius);
-  border-color: color-mix(in srgb, var(--brand-ink) 25%, transparent);
+.form-label {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
 }
 
-.form-control:focus {
+.form-control,
+.form-select {
+  border-radius: var(--brand-radius);
+  border-color: color-mix(in srgb, var(--brand-ink) 25%, transparent);
+  min-height: 2.35rem;
+}
+
+.form-control:focus,
+.form-select:focus {
   border-color: var(--brand-accent-2);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-accent-2) 30%, transparent);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--brand-accent-2) 25%, transparent);
+}
+
+.form-control:focus-visible,
+.form-select:focus-visible {
+  outline: none;
+}
+
+.form-text,
+.invalid-feedback {
+  font-size: 0.85rem;
 }
 
 .btn {
   border-radius: var(--brand-radius);
+  min-height: 2.35rem;
+  font-weight: 600;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: var(--brand-accent-ink);
+}
+
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  background: color-mix(in srgb, var(--brand-accent) 85%, #fff);
+  border-color: color-mix(in srgb, var(--brand-accent) 85%, #fff);
+  color: var(--brand-accent-ink);
+}
+
+.btn-outline-primary {
+  color: var(--brand-bg);
+  border-color: color-mix(in srgb, var(--brand-bg) 45%, transparent);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus-visible {
+  background: color-mix(in srgb, var(--brand-accent) 14%, transparent);
+  border-color: var(--brand-accent-2);
+  color: var(--brand-bg);
+}
+
+.btn-outline-secondary {
+  color: var(--brand-ink);
+  border-color: color-mix(in srgb, var(--brand-ink) 28%, transparent);
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus-visible {
+  background: color-mix(in srgb, var(--brand-accent-2) 10%, transparent);
+  border-color: var(--brand-accent-2);
+  color: var(--brand-ink);
 }
 
 .auth-panel .btn-primary {
@@ -538,6 +631,23 @@ a {
 
 .alert {
   border-radius: var(--brand-radius);
+  border-left: 4px solid transparent;
+}
+
+.alert-success {
+  border-left-color: var(--brand-success);
+}
+
+.alert-warning {
+  border-left-color: var(--brand-warning);
+}
+
+.alert-danger {
+  border-left-color: var(--brand-danger);
+}
+
+.alert-info {
+  border-left-color: var(--brand-info);
 }
 
 /* —— App shell (slim topbar) —— */
@@ -551,15 +661,42 @@ a {
 
 .app-topbar {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 2.9rem;
-  padding: 0.4rem clamp(1rem, 3vw, 2rem);
   background: var(--brand-sidebar);
   color: var(--brand-surface);
   border-bottom: 3px solid var(--brand-accent);
+}
+
+.app-navbar {
+  min-height: 2.9rem;
+  padding: 0.35rem clamp(1rem, 3vw, 2rem);
+  color: var(--brand-surface);
+}
+
+.app-topbar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.app-topbar-toggler {
+  padding: 0.25rem 0.5rem;
+  border-color: color-mix(in srgb, var(--brand-sidebar-text) 45%, transparent);
+}
+
+.app-topbar-toggler .navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+.app-topbar-toggler:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 2px;
+}
+
+.app-topnav-collapse {
+  flex-basis: 100%;
+  width: 100%;
 }
 
 .app-topbar::after {
@@ -584,32 +721,53 @@ a {
   color: var(--brand-surface);
 }
 
+.app-topbar .brand-wordmark:focus-visible {
+  outline: 3px solid var(--brand-accent);
+  outline-offset: 3px;
+  border-radius: var(--brand-radius);
+}
+
 .app-topnav {
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+  padding: var(--space-3) 0 0;
   font-size: 0.92rem;
 }
 
-.app-topnav a {
+.app-topnav a,
+.app-signout-button {
   text-decoration: none;
   color: var(--brand-sidebar-text);
-  padding: 0.15rem 0;
+  padding: 0.5rem 0;
+  border: 0;
   border-bottom: 2px solid transparent;
+  background: transparent;
+  font: inherit;
+  line-height: 1.2;
 }
 
 .app-topnav a:hover,
-.app-topnav a.is-active {
+.app-topnav a.is-active,
+.app-signout-button:hover {
   color: var(--brand-surface);
   border-bottom-color: var(--brand-accent);
 }
 
+.app-topnav a:focus-visible,
+.app-signout-button:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 3px;
+  border-radius: var(--brand-radius);
+  color: var(--brand-surface);
+}
+
 .app-user {
   color: var(--brand-surface);
-  font-weight: 500;
-  padding-left: 1rem;
-  border-left: 1px solid color-mix(in srgb, var(--brand-sidebar-text) 35%, transparent);
+  font-weight: 600;
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in srgb, var(--brand-sidebar-text) 35%, transparent);
 }
 
 .app-main {
@@ -658,6 +816,11 @@ a {
 
 .app-actions a:hover {
   background: color-mix(in srgb, var(--brand-accent) 85%, #fff);
+}
+
+.app-actions a:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 3px;
 }
 
 .app-actions a.secondary {
@@ -729,4 +892,127 @@ a {
 
 .app-notification-meta {
   margin-top: 0.2rem;
+}
+
+/* —— Shared component defaults ——— */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--brand-font-display);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  z-index: 1080;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0 0 var(--brand-radius) var(--brand-radius);
+  background: var(--brand-accent);
+  color: var(--brand-accent-ink);
+  font-weight: 600;
+}
+
+.card {
+  border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius);
+  box-shadow: var(--brand-shadow);
+}
+
+.card-title {
+  font-family: var(--brand-font-display);
+  letter-spacing: -0.02em;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.35em 0.6em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.35em 0.6em;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.status-badge--published,
+.status-badge--success {
+  background: var(--brand-success);
+  color: #fff;
+}
+
+.status-badge--pending,
+.status-badge--warning {
+  background: var(--brand-warning);
+  color: var(--brand-accent-ink);
+}
+
+.status-badge--rejected,
+.status-badge--danger {
+  background: var(--brand-danger);
+  color: #fff;
+}
+
+.status-badge--info {
+  background: var(--brand-info);
+  color: #fff;
+}
+
+.status-badge--neutral {
+  background: #e8eef7;
+  color: var(--brand-bg);
+}
+
+.table {
+  --bs-table-border-color: var(--brand-border);
+}
+
+.table > :not(caption) > * > * {
+  padding: var(--space-3) var(--space-4);
+}
+
+.table thead th {
+  background: color-mix(in srgb, var(--brand-surface) 80%, #fff);
+  color: var(--brand-muted);
+  font-family: var(--brand-font-display);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 768px) {
+  .app-topnav {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 0;
+  }
+
+  .app-topnav-collapse {
+    flex-basis: auto;
+    width: auto;
+  }
+
+  .app-topnav a,
+  .app-signout-button {
+    padding: 0.25rem 0;
+  }
+
+  .app-user {
+    padding-top: 0;
+    padding-left: 1.25rem;
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--brand-sidebar-text) 35%, transparent);
+  }
 }
