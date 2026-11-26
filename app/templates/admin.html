@@ -1,5 +1,6 @@
 {% extends "authenticated-base.html" %}
-{% block title %}Admin · UWI Connect{% endblock %}
+{% from "partials/admin_macros.html" import listing_kind_label with context %}
+{% block title %}Admin overview · UWI Connect{% endblock %}
 
 {% block external_css %}
 {{ super() }}
@@ -7,80 +8,194 @@
 {% endblock %}
 
 {% block subpage_content %}
-<div class="admin-dashboard">
-  <div class="admin-page-intro mb-4">
-    <h1>Admin dashboard</h1>
-    <p>Review and manage submissions, revisions, deletions and campaigns.</p>
-  </div>
-
-  <section aria-labelledby="overviewHeading">
-    <h2 id="overviewHeading" class="h5 mb-3">Overview</h2>
-    <div class="row g-3">
-      <div class="col-12 col-md-6">
-        <article class="card admin-overview-card admin-overview-card--moderation h-100">
-          <div class="card-body d-flex flex-column p-3 p-md-4">
-            <div class="admin-card-kicker">
-              <span class="admin-card-icon" aria-hidden="true">◆</span>
-              Listing management
-            </div>
-            <h3 class="h5 admin-card-heading">Listing moderation</h3>
-            <div class="admin-card-stat">{{ pending_count }}</div>
-            <p class="admin-card-stat-label">Pending job and event submissions</p>
-            <p class="admin-card-note">Approve or reject submissions and capture optional rejection reasons.</p>
-            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_moderation_view') }}">Review listings</a>
-          </div>
-        </article>
-      </div>
-      <div class="col-12 col-md-6">
-        <article class="card admin-overview-card admin-overview-card--revisions h-100">
-          <div class="card-body d-flex flex-column p-3 p-md-4">
-            <div class="admin-card-kicker">
-              <span class="admin-card-icon" aria-hidden="true">↻</span>
-              Revision review
-            </div>
-            <h3 class="h5 admin-card-heading">Revision requests</h3>
-            <div class="admin-card-stat">{{ revision_count }}</div>
-            <p class="admin-card-stat-label">Revision requests awaiting review</p>
-            <p class="admin-card-note">Compare current and proposed field values before deciding.</p>
-            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_revisions_view') }}">Review revisions</a>
-          </div>
-        </article>
-      </div>
-      <div class="col-12 col-md-6">
-        <article class="card admin-overview-card admin-overview-card--deletions h-100">
-          <div class="card-body d-flex flex-column p-3 p-md-4">
-            <div class="admin-card-kicker">
-              <span class="admin-card-icon" aria-hidden="true">⌫</span>
-              Deletion review
-            </div>
-            <h3 class="h5 admin-card-heading">Deletion requests</h3>
-            <div class="admin-card-stat">{{ deletion_count }}</div>
-            <p class="admin-card-stat-label">Deletion requests awaiting decision</p>
-            <p class="admin-card-note">Confirm permanent removal or deny the request safely.</p>
-            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_deletions_view') }}">Review deletions</a>
-          </div>
-        </article>
-      </div>
-      <div class="col-12 col-md-6">
-        <article class="card admin-overview-card admin-overview-card--campaigns h-100">
-          <div class="card-body d-flex flex-column p-3 p-md-4">
-            <div class="admin-card-kicker">
-              <span class="admin-card-icon" aria-hidden="true">✦</span>
-              Campaign management
-            </div>
-            <h3 class="h5 admin-card-heading">Campaigns</h3>
-            <div class="admin-card-stat">{{ campaign_counts.sent }}</div>
-            <p class="admin-card-stat-label">Campaigns sent</p>
-            <p class="admin-card-note">{{ campaign_counts.draft }} draft · {{ campaign_counts.scheduled }} scheduled · create drafts, send updates and schedule delivery.</p>
-            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_campaigns_view') }}">Manage campaigns</a>
-          </div>
-        </article>
-      </div>
+<div class="admin-dashboard admin-overview">
+  <header class="admin-overview-header mb-4">
+    <div class="admin-overview-header-copy">
+      <p class="admin-overview-kicker">Alumni administration</p>
+      <h1 class="admin-overview-title">Admin overview</h1>
+      <p class="admin-overview-subtitle">Everything that needs your attention, all in one place.</p>
     </div>
-    <div class="admin-secondary-stat">
-      <span class="admin-secondary-stat-label">Published listings</span>
-      <span class="admin-secondary-stat-value">{{ published_count }}</span>
+    <a class="btn btn-primary admin-overview-cta" href="{{ url_for('admin_campaigns_view') }}#campaignHeading">
+      <span class="admin-overview-cta-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3.25v9.5M3.25 8h9.5"/>
+        </svg>
+      </span>
+      New campaign
+    </a>
+  </header>
+
+  <section aria-labelledby="overviewSummaryHeading" class="mb-4">
+    <h2 id="overviewSummaryHeading" class="visually-hidden">Summary</h2>
+    <div class="row g-3 admin-summary-grid">
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="card admin-summary-card admin-summary-card--gold h-100" href="{{ url_for('admin_moderation_view') }}" aria-label="Pending submissions: {{ pending_count }}. View listing moderation.">
+          <div class="card-body">
+            <div class="admin-summary-top">
+              <span class="admin-summary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="4" width="16" height="16" rx="3"/>
+                  <path d="M8 12h8M12 8v8"/>
+                </svg>
+              </span>
+              <span class="admin-summary-label">Pending submissions</span>
+            </div>
+            <div class="admin-summary-value">{{ pending_count }}</div>
+            <p class="admin-summary-desc mb-0">Job and event submissions awaiting moderation</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="card admin-summary-card admin-summary-card--blue h-100" href="{{ url_for('admin_revisions_view') }}" aria-label="Revision requests: {{ revision_count }}. View revision requests.">
+          <div class="card-body">
+            <div class="admin-summary-top">
+              <span class="admin-summary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 12a8 8 0 1 1-2.34-5.66"/>
+                  <path d="M20 5v5h-5"/>
+                </svg>
+              </span>
+              <span class="admin-summary-label">Revision requests</span>
+            </div>
+            <div class="admin-summary-value">{{ revision_count }}</div>
+            <p class="admin-summary-desc mb-0">Published listing changes awaiting review</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="card admin-summary-card admin-summary-card--red h-100" href="{{ url_for('admin_deletions_view') }}" aria-label="Deletion requests: {{ deletion_count }}. View deletion requests.">
+          <div class="card-body">
+            <div class="admin-summary-top">
+              <span class="admin-summary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h16M9 7V5h6v2M8 7l1 12h6l1-12"/>
+                </svg>
+              </span>
+              <span class="admin-summary-label">Deletion requests</span>
+            </div>
+            <div class="admin-summary-value">{{ deletion_count }}</div>
+            <p class="admin-summary-desc mb-0">Listings authors asked to remove permanently</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <article class="card admin-summary-card admin-summary-card--green admin-summary-card--static h-100" aria-label="Published listings: {{ published_count }}. Currently live on the board.">
+          <div class="card-body">
+            <div class="admin-summary-top">
+              <span class="admin-summary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="8"/>
+                  <path d="m9 12 2 2 4-4"/>
+                </svg>
+              </span>
+              <span class="admin-summary-label">Published listings</span>
+            </div>
+            <div class="admin-summary-value">{{ published_count }}</div>
+            <p class="admin-summary-desc mb-0">Listings currently live on the job and event board</p>
+          </div>
+        </article>
+      </div>
     </div>
   </section>
+
+  <div class="row g-4 admin-overview-lower">
+    <section class="col-12 col-xl-8" aria-labelledby="needsAttentionHeading">
+      <div class="card admin-panel h-100">
+        <div class="card-body">
+          <div class="admin-panel-header">
+            <div>
+              <h2 id="needsAttentionHeading" class="admin-panel-title">Needs your attention</h2>
+              <p class="admin-panel-subtitle mb-0">Newest pending submissions waiting for moderation.</p>
+            </div>
+            <a class="admin-panel-link" href="{{ url_for('admin_moderation_view') }}">View all</a>
+          </div>
+
+          {% if pending_preview %}
+          <div class="admin-preview-table-wrap">
+            <table class="admin-preview-table">
+              <thead>
+                <tr>
+                  <th scope="col">Submission</th>
+                  <th scope="col">Submitted</th>
+                  <th scope="col">Status</th>
+                  <th scope="col"><span class="visually-hidden">Action</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for listing in pending_preview %}
+                <tr>
+                  <td data-label="Submission">
+                    <div class="admin-preview-title text-break">{{ listing.title | e }}</div>
+                    <div class="admin-preview-meta text-break">
+                      <span class="admin-preview-kind">{{ listing_kind_label(listing.kind) }}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{{ pending_preview_authors.get(listing.author_id, 'Unknown author') | e }}</span>
+                    </div>
+                  </td>
+                  <td data-label="Submitted">
+                    {% if listing.created_at %}
+                    <time class="admin-preview-date" datetime="{{ listing.created_at | e }}">{{ listing.created_at | e }}</time>
+                    {% else %}
+                    <span class="admin-preview-date">Date unavailable</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="Status">
+                    <span class="admin-status-pill admin-status-pill--pending">
+                      <span class="admin-status-pill-icon" aria-hidden="true">●</span>
+                      Pending
+                    </span>
+                  </td>
+                  <td data-label="Action" class="admin-preview-action-cell">
+                    <a class="admin-review-link" href="{{ url_for('admin_moderation_view') }}#submission{{ listing.id }}">Review listing<span class="visually-hidden">: {{ listing.title | e }}</span></a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="admin-empty-panel" role="status">
+            <p class="admin-empty-panel-title mb-1">No submissions are waiting for review.</p>
+            <p class="admin-empty-panel-text mb-0">New job and event submissions will appear here when alumni submit them for moderation.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="col-12 col-xl-4" aria-labelledby="campaignCardHeading">
+      <div class="card admin-panel admin-campaign-panel h-100">
+        <div class="card-body d-flex flex-column">
+          <p class="admin-overview-kicker">Campaigns</p>
+          <h2 id="campaignCardHeading" class="admin-panel-title">Keep alumni informed</h2>
+          <p class="admin-campaign-copy">Send updates to verified alumni through website notifications, with optional email delivery where enabled.</p>
+
+          <div class="admin-campaign-stats" aria-label="Campaign totals">
+            <div class="admin-campaign-stat">
+              <span class="admin-campaign-stat-value">{{ campaign_summary.total }}</span>
+              <span class="admin-campaign-stat-label">Total campaigns</span>
+            </div>
+            <div class="admin-campaign-stat">
+              <span class="admin-campaign-stat-value">{{ campaign_summary.draft }}</span>
+              <span class="admin-campaign-stat-label">Drafts</span>
+            </div>
+            <div class="admin-campaign-stat">
+              <span class="admin-campaign-stat-value">{{ campaign_summary.scheduled }}</span>
+              <span class="admin-campaign-stat-label">Scheduled</span>
+            </div>
+            <div class="admin-campaign-stat">
+              <span class="admin-campaign-stat-value">{{ campaign_summary.sent }}</span>
+              <span class="admin-campaign-stat-label">Sent</span>
+            </div>
+          </div>
+
+          <div class="admin-campaign-actions mt-auto">
+            <a class="btn btn-primary" href="{{ url_for('admin_campaigns_view') }}#campaignHeading">New campaign</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('admin_campaigns_view') }}">Manage campaigns</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 {% endblock %}

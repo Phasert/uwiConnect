@@ -195,24 +195,53 @@ def _isolate_admin_context(
     published=None,
     author_display_name="Test Author",
 ):
+    pending = pending or []
+    deletions = deletions or []
+    revisions = revisions or []
+    campaign_rows = campaign_rows or []
+    published = published or []
+    campaign_counts = {
+        "total": len(campaign_rows),
+        "draft": sum(1 for row in campaign_rows if row.get("status") == "draft"),
+        "scheduled": sum(1 for row in campaign_rows if row.get("status") == "scheduled"),
+        "sending": sum(1 for row in campaign_rows if row.get("status") == "sending"),
+        "sent": sum(1 for row in campaign_rows if row.get("status") == "sent"),
+    }
     monkeypatch.setattr(
         "app.routers.admin_home.boards.list_pending",
-        lambda *args, **kwargs: pending or [],
+        lambda *args, **kwargs: list(pending),
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.count_pending", lambda: len(pending)
     )
     monkeypatch.setattr(
         "app.routers.admin_home.boards.list_deletion_requests",
-        lambda admin_id, *args, **kwargs: {"ok": True, "listings": deletions or []},
+        lambda admin_id, *args, **kwargs: {"ok": True, "listings": list(deletions)},
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.count_deletion_requests",
+        lambda admin_id: len(deletions),
     )
     monkeypatch.setattr(
         "app.routers.admin_home.boards.list_revision_requests",
-        lambda admin_id, *args, **kwargs: {"ok": True, "revision_requests": revisions or []},
+        lambda admin_id, *args, **kwargs: {"ok": True, "revision_requests": list(revisions)},
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.count_revision_requests",
+        lambda admin_id: len(revisions),
     )
     monkeypatch.setattr(
         "app.routers.admin_home.campaigns.list_campaigns",
-        lambda *args, **kwargs: campaign_rows or [],
+        lambda *args, **kwargs: list(campaign_rows),
     )
     monkeypatch.setattr(
-        "app.routers.admin_home.boards.browse_published", lambda: published or []
+        "app.routers.admin_home.campaigns.campaign_summary", lambda: dict(campaign_counts)
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.browse_published", lambda: list(published)
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.count_published", lambda: len(published)
     )
     monkeypatch.setattr(
         "app.routers.admin_home.get_user",
@@ -244,7 +273,9 @@ def test_admin_dashboard_requires_admin_session(admin_client, alumni_client):
 
     page = admin_client.get("/admin")
     assert page.status_code == 200
-    assert "Admin dashboard" in page.text
+    assert "Alumni administration" in page.text
+    assert "Admin overview" in page.text
+    assert "Everything that needs your attention, all in one place." in page.text
 
 
 def test_admin_uses_admin_dashboard_not_alumni_board(admin_client):
@@ -261,26 +292,27 @@ def test_admin_uses_admin_dashboard_not_alumni_board(admin_client):
 def test_overview_links_resolve_to_authenticated_pages(admin_client):
     page = admin_client.get("/admin")
 
-    for label, action, path in (
-        ("Listing moderation", "Review listings", "/admin/moderation"),
-        ("Revision requests", "Review revisions", "/admin/revisions"),
-        ("Deletion requests", "Review deletions", "/admin/deletions"),
-        ("Campaigns", "Manage campaigns", "/admin/campaigns"),
+    for label, path in (
+        ("Pending submissions", "/admin/moderation"),
+        ("Revision requests", "/admin/revisions"),
+        ("Deletion requests", "/admin/deletions"),
     ):
         assert label in page.text
-        assert action in page.text
         assert f'href="http://testserver{path}"' in page.text
         assert admin_client.get(path).status_code == 200
 
+    assert "New campaign" in page.text
+    assert "Manage campaigns" in page.text
+    assert 'href="http://testserver/admin/campaigns#campaignHeading"' in page.text
+    assert 'href="http://testserver/admin/campaigns"' in page.text
+
     for description in (
-        "Pending job and event submissions",
-        "Revision requests awaiting review",
-        "Deletion requests awaiting decision",
-        "Campaigns sent",
-        "Published listings",
+        "Job and event submissions awaiting moderation",
+        "Published listing changes awaiting review",
+        "Listings authors asked to remove permanently",
+        "Listings currently live on the job and event board",
     ):
         assert description in page.text
-    assert "No job or event listings are awaiting review." not in page.text
     assert "User management" not in page.text
     for control in (
         'name="rejection_reason"',
@@ -311,28 +343,104 @@ def test_overview_counts_match_page_specific_data(admin_client, monkeypatch):
 
     html = admin_client.get("/admin").text
 
-    for area, expected in (
-        ("moderation", 2),
-        ("revisions", 4),
-        ("deletions", 3),
-        ("campaigns", 1),
-    ):
-        match = re.search(
-            rf"admin-overview-card--{area}.*?admin-card-stat[^>]*>\s*(\d+)\s*<",
-            html,
-            re.DOTALL,
-        )
-        assert match, area
-        assert int(match.group(1)) == expected
+    expected = {
+        "Pending submissions": 2,
+        "Revision requests": 4,
+        "Deletion requests": 3,
+        "Published listings": 5,
+    }
+    for label, count in expected.items():
+        pattern = rf"{re.escape(label)}.*?admin-summary-value[^>]*>\s*{count}\s*<"
+        assert re.search(pattern, html, re.DOTALL), label
 
-    published = re.search(
-        r"admin-secondary-stat.*?admin-secondary-stat-value[^>]*>\s*(\d+)\s*<",
+    assert "Total campaigns" in html
+    assert re.search(r"admin-campaign-stat-value[^>]*>\s*3\s*</span>\s*<span class=\"admin-campaign-stat-label\">Total campaigns", html, re.DOTALL)
+    assert re.search(r"admin-campaign-stat-value[^>]*>\s*1\s*</span>\s*<span class=\"admin-campaign-stat-label\">Drafts", html, re.DOTALL)
+    assert re.search(r"admin-campaign-stat-value[^>]*>\s*1\s*</span>\s*<span class=\"admin-campaign-stat-label\">Scheduled", html, re.DOTALL)
+    assert re.search(r"admin-campaign-stat-value[^>]*>\s*1\s*</span>\s*<span class=\"admin-campaign-stat-label\">Sent", html, re.DOTALL)
+    published_card = re.search(
+        r"Published listings.*?</article>",
         html,
         re.DOTALL,
     )
-    assert published
-    assert int(published.group(1)) == 5
-    assert "1 draft · 1 scheduled" in html
+    assert published_card
+    assert "<a " not in published_card.group(0).split("admin-summary-value", 1)[0]
+
+
+def test_overview_pending_preview_limit_order_and_review_links(admin_client, monkeypatch):
+    rows = [
+        _sample_listing(100 + i, title=f"Listing {i}", created_at=f"2099-01-{i:02d}T00:00:00+00:00")
+        for i in range(1, 8)
+    ]
+    # list_pending default sort is newest-first; emulate it
+    rows_sorted = sorted(rows, key=lambda r: (r["created_at"], r["id"]), reverse=True)
+    seen = {}
+
+    def fake_list_pending(*args, **kwargs):
+        seen["kwargs"] = kwargs
+        limit = kwargs.get("limit")
+        result = list(rows_sorted)
+        return result[:limit] if limit is not None else result
+
+    _isolate_admin_context(monkeypatch, pending=rows_sorted)
+    monkeypatch.setattr("app.routers.admin_home.boards.list_pending", fake_list_pending)
+
+    html = admin_client.get("/admin").text
+
+    assert seen["kwargs"].get("sort") == "created_desc"
+    assert seen["kwargs"].get("limit") == 5
+    assert "Needs your attention" in html
+    for i in range(7, 2, -1):
+        assert f"Listing {i}" in html
+        assert f'href="http://testserver/admin/moderation#submission{100 + i}"' in html
+        assert "Review listing" in html
+    assert "Listing 2" not in html
+    assert "Listing 1" not in html
+    assert html.index("Listing 7") < html.index("Listing 6") < html.index("Listing 3")
+
+
+def test_overview_review_target_is_discoverable_on_moderation(admin_client, monkeypatch):
+    listing = _sample_listing(4242, title="Anchor Target")
+    _isolate_admin_context(monkeypatch, pending=[listing])
+
+    html = admin_client.get("/admin/moderation").text
+
+    assert 'id="submission4242"' in html
+    assert 'id="submissionDetails4242"' in html
+    assert "window.location.hash" in html
+    assert "details.open = true" in html
+
+
+def test_overview_empty_attention_state(admin_client, monkeypatch):
+    _isolate_admin_context(monkeypatch, pending=[])
+
+    html = admin_client.get("/admin").text
+
+    assert "No submissions are waiting for review." in html
+    assert "New job and event submissions will appear here" in html
+    assert "View all" in html
+
+
+def test_overview_escapes_pending_preview_user_content(admin_client, monkeypatch):
+    listing = _sample_listing(
+        5151,
+        title="<script>alert('x')</script>",
+        author_id=777,
+        created_at="2099-03-04T05:06:07+00:00",
+    )
+    _isolate_admin_context(
+        monkeypatch,
+        pending=[listing],
+        author_display_name="<img src=x onerror=alert(1)>",
+    )
+
+    html = admin_client.get("/admin").text
+
+    assert "<script>alert('x')</script>" not in html
+    assert "&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;" in html
+    assert "<img src=x onerror=alert(1)>" not in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+    assert "2099-03-04T05:06:07+00:00" in html
 
 
 def test_subpages_have_explicit_back_links_and_scoped_styles(admin_client):

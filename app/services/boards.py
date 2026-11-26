@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -316,15 +316,70 @@ def _apply_listing_filters(stmt, *, q: str | None = None, kind: str | None = Non
     return stmt
 
 
+def count_pending() -> int:
+    with Session(engine) as session:
+        return int(
+            session.exec(
+                select(func.count()).select_from(Listing).where(Listing.status == "pending")
+            ).one()
+        )
+
+
+def count_published() -> int:
+    with Session(engine) as session:
+        today = _local_today().isoformat()
+        stmt = (
+            select(func.count())
+            .select_from(Listing)
+            .where(
+                Listing.status == "published",
+                or_(
+                    and_(
+                        Listing.kind == "job",
+                        or_(
+                            Listing.application_deadline.is_(None),
+                            Listing.application_deadline >= today,
+                        ),
+                    ),
+                    and_(
+                        Listing.kind == "event",
+                        or_(Listing.event_date.is_(None), Listing.event_date >= today),
+                    ),
+                ),
+            )
+        )
+        return int(session.exec(stmt).one())
+
+
 def list_pending(
-    *, q: str | None = None, kind: str | None = None, sort: str = "created_desc"
+    *,
+    q: str | None = None,
+    kind: str | None = None,
+    sort: str = "created_desc",
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     with Session(engine) as session:
         stmt = select(Listing).where(Listing.status == "pending")
         stmt = _apply_listing_filters(stmt, q=q, kind=kind)
         stmt = stmt.order_by(*_listing_order(sort))
+        if limit is not None:
+            stmt = stmt.limit(limit)
         rows = session.exec(stmt).all()
         return [r.model_dump() for r in rows]
+
+
+def count_deletion_requests(admin_id: int) -> int:
+    user = get_user(admin_id)
+    if not user or user["role"] != "admin":
+        return 0
+    with Session(engine) as session:
+        return int(
+            session.exec(
+                select(func.count())
+                .select_from(Listing)
+                .where(Listing.deletion_requested.is_(True))
+            ).one()
+        )
 
 
 def list_deletion_requests(
@@ -353,6 +408,20 @@ def _revision_order(sort: str):
     if sort == "title_desc":
         return (ListingRevision.title.desc(), ListingRevision.listing_id.desc())
     return (ListingRevision.requested_at.desc(), ListingRevision.listing_id.desc())
+
+
+def count_revision_requests(admin_id: int) -> int:
+    user = get_user(admin_id)
+    if not user or user["role"] != "admin":
+        return 0
+    with Session(engine) as session:
+        return int(
+            session.exec(
+                select(func.count())
+                .select_from(ListingRevision)
+                .where(ListingRevision.status == "pending")
+            ).one()
+        )
 
 
 def list_revision_requests(
