@@ -8,7 +8,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import update
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models.user import User
 from app.models.verification_token import VerificationToken
@@ -24,13 +24,44 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def lock_verification_user(session: Session, user_id: int) -> bool:
+    # Serialize token issuance and consumption even on SQLite, which ignores FOR UPDATE.
+    locked_user_id = session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(email_verified=User.email_verified)
+        .returning(User.id)
+    ).scalar_one_or_none()
+    return locked_user_id is not None
+
+
+def has_recent_verification_token(session: Session, user_id: int) -> bool:
+    cutoff = _utc_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
+    return session.exec(
+        select(VerificationToken.id).where(
+            VerificationToken.user_id == user_id,
+            VerificationToken.consumed_at.is_(None),
+            VerificationToken.expires_at > cutoff,
+        )
+    ).first() is not None
+
+
 def issue_verification_token(
     session: Session, user_id: int, *, now: datetime | None = None
 ) -> str:
-    if session.get(User, user_id) is None:
-        raise ValueError("user not found")
     issued_at = now if now is not None else datetime.now(timezone.utc)
+    issued_timestamp = _utc_timestamp(issued_at)
     expires_at = _utc_timestamp(issued_at + timedelta(minutes=30))
+    if not lock_verification_user(session, user_id):
+        raise ValueError("user not found")
+    session.execute(
+        update(VerificationToken)
+        .where(
+            VerificationToken.user_id == user_id,
+            VerificationToken.consumed_at.is_(None),
+        )
+        .values(consumed_at=issued_timestamp)
+    )
     token = secrets.token_urlsafe(32)
     session.add(
         VerificationToken(

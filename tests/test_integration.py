@@ -29,9 +29,11 @@ def test_save_password(test_session):
 def test_login(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
-    service.register_user(
+    user = service.register_user(
         "alice", "Alice@UWI.EDU", "secret", "Computer Science", "FST"
     )
+    user.email_verified = 1
+    test_session.commit()
 
     token = service.authenticate_user("alice", "secret")
     settings = get_settings()
@@ -84,9 +86,11 @@ def test_ssr_registration_rejects_duplicate_case_insensitively(test_session):
 def test_ssr_authenticate_accepts_username_unchanged(test_session):
     repository = UserRepository(test_session)
     service = AuthService(repository)
-    service.register_user(
+    user = service.register_user(
         "alice", "Alice@MY.UWI.EDU", "secret", "Computer Science", "FST"
     )
+    user.email_verified = 1
+    test_session.commit()
 
     token = service.authenticate_user("alice", "secret")
 

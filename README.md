@@ -71,6 +71,18 @@ python manage.py send-test-email --to recipient@example.com
 
 Verification tokens are stored as hashes and expire after 30 minutes. The
 verification table is added by the existing non-destructive schema initializer.
+Unverified accounts cannot log in or use existing authenticated sessions.
+The login page offers a verification-email resend; API clients can POST
+`{"email": "user@uwi.edu"}` to `/api/auth/resend-verification` with the CSRF
+token described below. Responses do not disclose whether an account exists.
+Resend requests are limited to one per recipient per ten minutes across
+instances sharing the database, and five per client address per ten minutes in
+each process. A link issued in the last ten minutes is not replaced. Earlier
+links are invalidated only after SMTP accepts a replacement; delivery failures
+leave them usable. SMTP acceptance and database commit are not atomic, and mail
+providers can still delay or reorder messages. The IP limit is not shared across
+instances; use a deployment-edge rate limiter for distributed IP protection.
+`GET /api/users` requires an authenticated administrator session.
 
 Same-origin browser clients can obtain a separate CSRF token from `GET /api/auth/csrf`; send it in `X-CSRF-Token` on state-changing fetch requests. Native SSR forms submit the same token as a hidden `csrf_token` field. The CSRF endpoint never returns the HttpOnly JWT.
 

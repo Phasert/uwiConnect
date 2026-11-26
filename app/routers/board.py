@@ -15,6 +15,7 @@ from app.dependencies import AdminDep, AuthDep, get_csrf_protection
 from app.dependencies.auth import get_current_user
 from app.services import accounts, boards, campaigns, notification_stream, notifications
 from app.services import board_auth as auth
+from app.services.verification_resend import RESEND_MESSAGE, check_resend_rate_limit
 
 router = APIRouter(tags=["uwi-connect"])
 
@@ -35,6 +36,10 @@ class RegisterBody(BaseModel):
 
 class VerifyEmailBody(BaseModel):
     token: str
+
+
+class ResendVerificationBody(BaseModel):
+    email: str = Field(max_length=320)
 
 
 class ListingBody(BaseModel):
@@ -177,6 +182,18 @@ def verify_email_by_link(token: str) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
+
+
+@router.post("/auth/resend-verification")
+def resend_verification(
+    body: ResendVerificationBody,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, str]:
+    check_resend_rate_limit(request)
+    background_tasks.add_task(accounts.resend_verification_email, body.email)
+    return {"message": RESEND_MESSAGE}
 
 
 @router.post("/auth/verify-email")

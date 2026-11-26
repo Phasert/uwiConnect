@@ -1,4 +1,4 @@
-"""Registration and UWI-email verification (intentionally soft)."""
+"""Registration and UWI-email verification."""
 
 from __future__ import annotations
 
@@ -118,45 +118,87 @@ def send_verification_email(user_id: int) -> None:
     """Issue a verification token and deliver it after registration completes."""
     from app.config import get_settings
     from app.services.email_service import SMTPEmailService
-    from app.services.verification_tokens import issue_verification_token
+    from app.services.verification_tokens import (
+        has_recent_verification_token,
+        issue_verification_token,
+        lock_verification_user,
+    )
 
     with Session(engine) as session:
-        user = session.get(User, user_id)
-        if user is None or user.email_verified or not is_uwi_email(user.email):
+        if not lock_verification_user(session, user_id):
+            return
+        user = session.get(User, user_id, populate_existing=True)
+        if (
+            user is None
+            or user.email_verified
+            or not is_account_accessible(user)
+            or not is_uwi_email(user.email)
+        ):
+            return
+        if has_recent_verification_token(session, user_id):
             return
         token = issue_verification_token(session, user_id)
-        session.commit()
         recipient = user.email
 
-    base_url = get_settings().app_base_url.rstrip("/")
-    verification_url = f"{base_url}/api/auth/verify-email?token={quote(token, safe='')}"
-    text_body = (
-        "Verify your UWI Connect email address by opening this link:\n\n"
-        f"{verification_url}\n\n"
-        "This link expires in 30 minutes."
-    )
-    html_body = (
-        "<p>Verify your UWI Connect email address by opening this link:</p>"
-        f'<p><a href="{escape(verification_url, quote=True)}">Verify email</a></p>'
-        "<p>This link expires in 30 minutes.</p>"
-    )
-    try:
-        SMTPEmailService().send_email(
-            recipient,
-            "Verify your UWI Connect email address",
-            text_body,
-            html_body=html_body,
+        base_url = get_settings().app_base_url.rstrip("/")
+        verification_url = f"{base_url}/api/auth/verify-email?token={quote(token, safe='')}"
+        text_body = (
+            "Verify your UWI Connect email address by opening this link:\n\n"
+            f"{verification_url}\n\n"
+            "This link expires in 30 minutes."
         )
-    except (smtplib.SMTPException, OSError, ValueError):
-        # SMTPEmailService logs a redacted failure; registration stays successful.
-        return
+        html_body = (
+            "<p>Verify your UWI Connect email address by opening this link:</p>"
+            f'<p><a href="{escape(verification_url, quote=True)}">Verify email</a></p>'
+            "<p>This link expires in 30 minutes.</p>"
+        )
+        try:
+            SMTPEmailService().send_email(
+                recipient,
+                "Verify your UWI Connect email address",
+                text_body,
+                html_body=html_body,
+            )
+        except (smtplib.SMTPException, OSError, ValueError):
+            session.rollback()
+            return
+        session.commit()
+
+
+def resend_verification_email(email: str) -> None:
+    from app.services.verification_resend import claim_resend_recipient
+
+    normalized_email = normalize_email(email)
+    with Session(engine) as session:
+        if not claim_resend_recipient(session, normalized_email):
+            return
+        user = session.exec(
+            select(User).where(func.lower(User.email) == normalized_email)
+        ).first()
+        if user is None or user.id is None:
+            return
+        user_id = user.id
+    send_verification_email(user_id)
 
 
 def verify_email_token(token: str) -> dict[str, Any]:
     """Consume a valid token and mark its associated account verified."""
-    from app.services.verification_tokens import consume_verification_token
+    from app.models.verification_token import VerificationToken
+    from app.services.verification_tokens import (
+        consume_verification_token,
+        hash_token,
+        lock_verification_user,
+    )
 
     with Session(engine) as session:
+        candidate_id = session.exec(
+            select(VerificationToken.user_id).where(
+                VerificationToken.token_hash == hash_token(token)
+            )
+        ).first()
+        if candidate_id is None or not lock_verification_user(session, candidate_id):
+            session.rollback()
+            return {"ok": False, "error": "verification token is invalid or expired"}
         user_id = consume_verification_token(session, token)
         if user_id is None:
             session.rollback()

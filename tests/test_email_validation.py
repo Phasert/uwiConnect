@@ -17,6 +17,7 @@ from app.services.accounts import (
     verify_email,
 )
 from app.utilities.security import encrypt_password
+from tests.listing_auth_helpers import login
 
 client = TestClient(app)
 
@@ -114,7 +115,9 @@ def test_uppercase_registration_stores_lowercase_email() -> None:
 
 
 def test_administrative_user_response_never_contains_password_fields() -> None:
-    response = client.get("/api/users")
+    admin_client = TestClient(app)
+    login(admin_client, "admin@uwi.edu", "admin-dev")
+    response = admin_client.get("/api/users")
 
     assert response.status_code == 200
     assert response.json()
@@ -239,6 +242,10 @@ def test_login_accepts_different_email_capitalization() -> None:
         },
     )
     assert registered.status_code == 200
+    with Session(engine) as session:
+        user = session.get(User, registered.json()["user"]["id"])
+        user.email_verified = 1
+        session.commit()
 
     response = client.post(
         "/api/auth/login",

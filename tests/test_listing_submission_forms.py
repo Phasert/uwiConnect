@@ -2,10 +2,14 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
+from app.database import engine
 from app.main import app
+from app.models.user import User
 from app.seed import seed
 from app.services import board_auth, boards
+from app.utilities.security import create_access_token
 from tests.listing_auth_helpers import login
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
@@ -84,10 +88,15 @@ def test_unauthenticated_user_cannot_submit(client):
 
 
 def test_unverified_alumnus_cannot_submit(client):
-    _login(client, UNVERIFIED_EMAIL)
-    response = client.post("/app/dashboard/submit", data=_job_data())
+    with Session(engine) as session:
+        user_id = session.exec(select(User.id).where(User.email == UNVERIFIED_EMAIL)).one()
+    client.cookies.set("access_token", create_access_token({"sub": str(user_id)}))
+    token = client.get("/api/auth/csrf").json()["csrf_token"]
+    response = client.post(
+        "/app/dashboard/submit", data=_job_data(), headers={"X-CSRF-Token": token}
+    )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_job_fields_render_with_backend_field_names(client):

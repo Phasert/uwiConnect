@@ -15,6 +15,7 @@ def _add_user(test_session, *, username: str, role: str) -> User:
         email=f"{username}@uwi.edu",
         password="hashed-password",
         role=role,
+        email_verified=1,
     )
     test_session.add(user)
     test_session.commit()
@@ -45,6 +46,18 @@ def test_valid_jwt_resolves_user_and_database_role(test_session) -> None:
 
     assert authenticated_user.id == user.id
     assert authenticated_user.role == "alumni"
+
+
+def test_existing_jwt_rejects_user_whose_email_is_unverified(test_session) -> None:
+    user = _add_user(test_session, username="unverified", role="alumni")
+    token = create_access_token({"sub": str(user.id)})
+    user.email_verified = 0
+    test_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        _authenticate(_request_with_token(token), test_session)
+
+    assert exc_info.value.status_code == 401
 
 
 def test_missing_jwt_returns_401_even_with_user_id_header(test_session) -> None:

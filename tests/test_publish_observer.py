@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.main import app
+from app.models.notification import Notification
 from app.models.user import User
 from app.seed import seed
 from app.services.observer import (
@@ -88,6 +89,19 @@ def _inbox(user_id: int) -> list:
     r = client.get("/api/notifications", headers=auth_headers(client, user_id))
     assert r.status_code == 200
     return r.json()["notifications"]
+
+
+def _unverified_messages() -> list[str]:
+    with Session(engine) as session:
+        user = session.exec(
+            select(User).where(User.email == "alumni.pending@gmail.com")
+        ).one()
+        return [
+            row.message
+            for row in session.exec(
+                select(Notification).where(Notification.user_id == user.id)
+            ).all()
+        ]
 
 
 def _create_campaign(user_id: int, subject: str, body: str) -> dict:
@@ -203,7 +217,6 @@ def test_repeated_and_invalid_publish_attempts_emit_no_extra_events(events):
 
 def test_publishing_via_api_notifies_verified_alumni_only():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
-    unverified = _login("alumni.pending@gmail.com", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
 
     for kind in ("job", "event"):
@@ -225,7 +238,7 @@ def test_publishing_via_api_notifies_verified_alumni_only():
             "message",
             "created_at",
         }
-        assert not any(title in row["message"] for row in _inbox(unverified["id"]))
+        assert not any(title in message for message in _unverified_messages())
         assert not any(title in row["message"] for row in _inbox(admin["id"]))
 
 
@@ -264,7 +277,6 @@ def test_pending_and_rejected_listings_create_no_notifications():
 
 def test_sending_campaign_via_api_notifies_verified_alumni_only():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
-    unverified = _login("alumni.pending@gmail.com", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
     subject = "API Campaign Notify"
     body = "A new alumni opportunity."
@@ -277,7 +289,7 @@ def test_sending_campaign_via_api_notifies_verified_alumni_only():
     assert len(rows) == 1
     assert rows[0]["event_type"] == CAMPAIGN_SENT
     assert rows[0]["message"] == f"Campaign: {subject} - {body}"
-    assert not any(subject in row["message"] for row in _inbox(unverified["id"]))
+    assert not any(subject in message for message in _unverified_messages())
     assert not any(subject in row["message"] for row in _inbox(admin["id"]))
 
 

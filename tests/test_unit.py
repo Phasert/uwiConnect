@@ -20,6 +20,7 @@ def test_authenticate_user_returns_token_for_valid_credentials(monkeypatch):
         username="alice",
         password=encrypt_password("secret"),
         role="regular_user",
+        email_verified=1,
     )
 
     class FakeUserRepository:
@@ -42,6 +43,7 @@ def test_authenticate_user_returns_none_for_invalid_credentials():
         username="alice",
         password=encrypt_password("secret"),
         role="regular_user",
+        email_verified=1,
     )
 
     class FakeUserRepository:

@@ -22,6 +22,7 @@ class AuthService:
             or not verify_password(
                 plaintext_password=password, encrypted_password=user.password
             )
+            or not user.email_verified
         ):
             return None
         access_token = create_access_token(data={"sub": f"{user.id}", "role": user.role})
