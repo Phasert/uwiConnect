@@ -20,7 +20,7 @@ from sqlmodel import Session
 
 from app.database import engine
 from app.dependencies import AdminDep, AuthDep, get_csrf_protection
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import AlumniDep, get_current_user
 from app.services import accounts, boards, campaigns, notification_stream, notifications
 from app.services import board_auth as auth
 from app.services.verification_resend import RESEND_MESSAGE, check_resend_rate_limit
@@ -217,6 +217,7 @@ def verify_email(body: VerifyEmailBody) -> dict[str, Any]:
 
 @router.get("/boards")
 def browse(
+    user: AlumniDep,
     kind: str | None = None,
     q: str | None = None,
     category: str | None = None,

@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
-from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_auth_helpers import auth_headers, browse_as_verified, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -74,7 +74,7 @@ def test_submission_is_not_published_until_admin_publishes():
     listing_id = result["listing"]["id"]
 
     for url in ("/api/boards", "/api/boards?kind=event", "/api/boards?kind=job"):
-        public_ids = [row["id"] for row in client.get(url).json()["listings"]]
+        public_ids = [row["id"] for row in browse_as_verified(client, url)]
         assert listing_id not in public_ids
 
     pending_ids = [

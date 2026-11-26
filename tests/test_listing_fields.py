@@ -6,7 +6,7 @@ from sqlmodel import create_engine
 from app import database as database_module
 from app.main import app
 from app.seed import seed
-from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_auth_helpers import auth_headers, browse_as_verified, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -174,16 +174,17 @@ def test_category_faculty_and_department_filters_remain_published_only():
     _publish(admin["id"], job_id)
     _publish(admin["id"], event_id)
 
-    by_job_category = client.get(
-        "/api/boards", params={"kind": "job", "category": "Engineering"}
-    ).json()["listings"]
-    combined = client.get(
+    by_job_category = browse_as_verified(
+        client, "/api/boards", {"kind": "job", "category": "Engineering"}
+    )
+    combined = browse_as_verified(
+        client,
         "/api/boards",
-        params={"q": "Engineering", "kind": "event", "category": "Networking"},
-    ).json()["listings"]
-    by_department = client.get(
-        "/api/boards", params={"department": "Electrical Engineering"}
-    ).json()["listings"]
+        {"q": "Engineering", "kind": "event", "category": "Networking"},
+    )
+    by_department = browse_as_verified(
+        client, "/api/boards", {"department": "Electrical Engineering"}
+    )
 
     assert [row["id"] for row in by_job_category] == [job_id]
     assert [row["id"] for row in combined] == [event_id]

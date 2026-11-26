@@ -19,14 +19,22 @@ async def index_view(
     app_home = request.url_for("login_view")
     admin_link = False
     alumni_link = False
+    featured_access = False
     if user_logged_in:
         user = await get_current_user(request, db)
         admin_link = await is_admin(user)
         alumni_link = await is_alumni(user)
+        featured_access = alumni_link
         if admin_link:
             app_home = request.url_for("admin_home_view")
         else:
             app_home = request.url_for("user_home_view")
+
+    featured_jobs = []
+    featured_events = []
+    if featured_access:
+        featured_jobs = boards.browse_published(kind="job")[:FEATURED_LIMIT]
+        featured_events = boards.browse_published(kind="event")[:FEATURED_LIMIT]
 
     return templates.TemplateResponse(
         request=request,
@@ -36,7 +44,8 @@ async def index_view(
             "app_home": app_home,
             "is_admin": admin_link,
             "is_alumni": alumni_link,
-            "featured_jobs": boards.browse_published(kind="job")[:FEATURED_LIMIT],
-            "featured_events": boards.browse_published(kind="event")[:FEATURED_LIMIT],
+            "featured_access": featured_access,
+            "featured_jobs": featured_jobs,
+            "featured_events": featured_events,
         },
     )

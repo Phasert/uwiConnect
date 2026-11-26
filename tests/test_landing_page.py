@@ -108,18 +108,18 @@ def test_landing_page_contains_expected_sections():
     assert len(re.findall(r"<h2\b", page.text)) >= 3
 
 
-def test_anonymous_navigation_shows_public_browse_and_sign_in():
+def test_anonymous_navigation_shows_sign_in_and_no_board_links():
     page = TestClient(app).get("/")
 
     assert ">Sign in</a>" in page.text
-    assert 'href="/api/boards?kind=job"' in page.text
-    assert 'href="/api/boards?kind=event"' in page.text
+    assert "/api/boards" not in page.text
     assert 'href="http://testserver/">Home</a>' in page.text
     assert re.search(r'href="[^"]*/app(?:/dashboard)?(?:[?#]|")', page.text) is None
     assert "My submissions" not in page.text
     assert "Admin dashboard" not in page.text
     assert "Sign out" not in page.text
     assert ">Browse boards</a>" not in page.text
+    assert "/register" in page.text
     assert 'id="notificationMenu"' not in page.text
     assert re.search(r'action="[^"]*/logout"', page.text) is None
 
@@ -209,7 +209,7 @@ def test_featured_content_only_uses_eligible_published_listings():
     )
     assert revision.get("ok")
 
-    page = TestClient(app).get("/")
+    page = _client(ALUMNI_EMAIL, ALUMNI_PASSWORD).get("/")
 
     assert "Featured Backend Role" in page.text
     assert "Featured Alumni Meetup" in page.text
@@ -240,7 +240,7 @@ def test_featured_section_limits_number_of_listings():
             faculty="Science and Technology",
         )
 
-    page = TestClient(app).get("/")
+    page = _client(ALUMNI_EMAIL, ALUMNI_PASSWORD).get("/")
 
     assert "Limited Job 4" in page.text
     assert "Limited Job 1" not in page.text
@@ -251,7 +251,7 @@ def test_featured_empty_state_when_no_eligible_listings():
     seed(reset=True)
     _clear_listings()
 
-    page = TestClient(app).get("/")
+    page = _client(ALUMNI_EMAIL, ALUMNI_PASSWORD).get("/")
 
     assert page.status_code == 200
     assert "No featured job opportunities are available right now." in page.text

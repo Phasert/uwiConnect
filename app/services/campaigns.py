@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -238,9 +238,30 @@ def create_draft(
         return {"ok": True, "campaign": campaign.model_dump()}
 
 
-def list_campaigns() -> list[dict[str, Any]]:
+def _campaign_order(sort: str):
+    if sort == "created_asc":
+        return (Campaign.created_at.asc(), Campaign.id.asc())
+    if sort == "subject_asc":
+        return (Campaign.subject.asc(), Campaign.id.asc())
+    if sort == "subject_desc":
+        return (Campaign.subject.desc(), Campaign.id.desc())
+    return (Campaign.created_at.desc(), Campaign.id.desc())
+
+
+def list_campaigns(
+    *, q: str | None = None, status: str | None = None, sort: str = "created_desc"
+) -> list[dict[str, Any]]:
     with Session(engine) as session:
-        rows = session.exec(select(Campaign).order_by(Campaign.id.desc())).all()
+        stmt = select(Campaign)
+        if status in {"draft", "scheduled", "sending", "sent"}:
+            stmt = stmt.where(Campaign.status == status)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(Campaign.subject.ilike(pattern), Campaign.body.ilike(pattern))
+            )
+        stmt = stmt.order_by(*_campaign_order(sort))
+        rows = session.exec(stmt).all()
         return [r.model_dump() for r in rows]
 
 

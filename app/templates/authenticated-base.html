@@ -13,8 +13,8 @@
         </button>
         <div class="collapse navbar-collapse app-topnav-collapse" id="appNavLinks">
           <div class="app-topnav">
-            <a class="app-nav-link{{ ' is-active' if request.url.path == '/app' }}" href="{{ url_for('user_home_view') }}">Browse boards</a>
             {% if user.role == 'alumni' %}
+            <a class="app-nav-link{{ ' is-active' if request.url.path == '/app' }}" href="{{ url_for('user_home_view') }}">Browse boards</a>
             <a class="app-nav-link{{ ' is-active' if request.url.path.startswith('/app/dashboard') }}" href="{{ url_for('user_dashboard_view') }}">My submissions</a>
             {% endif %}
             {% if user.role == 'admin' %}

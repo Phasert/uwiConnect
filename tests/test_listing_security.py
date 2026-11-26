@@ -194,11 +194,37 @@ def test_admin_routes_use_authenticated_role_and_csrf():
     ).status_code == 200
 
 
-def test_public_browse_remains_read_only_and_available_without_login():
+def test_browse_requires_alumni_and_only_returns_published_listings():
+    alum = login(client, "alumni.verified@my.uwi.edu", "alumni-dev")
+    admin = login(client, "admin@uwi.edu", "admin-dev")
+    published = _submit(alum["id"], "Public Listing")
+    pending = _submit(alum["id"], "Private Pending Listing")
+    rejected = _submit(alum["id"], "Private Rejected Listing")
+    assert _publish(admin["id"], published["id"]).status_code == 200
+    assert client.post(
+        f"/api/admin/listings/{rejected['id']}/reject",
+        json={"rejection_reason": "Private review"},
+        headers=auth_headers(client, admin["id"]),
+    ).status_code == 200
+    assert client.post(
+        f"/api/boards/listings/{published['id']}/revision-request",
+        json=complete_listing_payload(
+            {"kind": "job", "title": "Private Proposed Revision", "body": "Private body"}
+        ),
+        headers=auth_headers(client, alum["id"]),
+    ).status_code == 200
     client.cookies.clear()
     client.headers.pop("X-CSRF-Token", None)
 
+    assert client.get("/api/boards").status_code == 401
+    login(client, "alumni.verified@my.uwi.edu", "alumni-dev")
     response = client.get("/api/boards")
-
     assert response.status_code == 200
-    assert isinstance(response.json()["listings"], list)
+    rows = response.json()["listings"]
+    ids = {row["id"] for row in rows}
+    assert published["id"] in ids
+    assert pending["id"] not in ids
+    assert rejected["id"] not in ids
+    assert all(row["status"] == "published" for row in rows)
+    assert "Private Proposed Revision" not in response.text
+    assert "Private review" not in response.text

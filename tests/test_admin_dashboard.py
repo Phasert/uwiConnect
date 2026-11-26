@@ -7,7 +7,7 @@ from app.main import app
 from app.seed import seed
 from app.services import board_auth, boards, campaigns
 from app.services.website_notifications import register_website_observer
-from tests.campaign_test_helpers import isolate_publisher
+from tests.campaign_test_helpers import add_user, isolate_publisher
 from tests.csrf_test_helpers import csrf_token_from_html
 
 ADMIN_EMAIL = "admin@uwi.edu"
@@ -181,6 +181,10 @@ def _sample_campaign(campaign_id, **overrides):
     return row
 
 
+def _submission_details(html):
+    return re.findall(r"<details\b([^>]*)>(.*?)</details>", html, re.DOTALL)
+
+
 def _isolate_admin_context(
     monkeypatch,
     *,
@@ -192,18 +196,20 @@ def _isolate_admin_context(
     author_display_name="Test Author",
 ):
     monkeypatch.setattr(
-        "app.routers.admin_home.boards.list_pending", lambda: pending or []
+        "app.routers.admin_home.boards.list_pending",
+        lambda *args, **kwargs: pending or [],
     )
     monkeypatch.setattr(
         "app.routers.admin_home.boards.list_deletion_requests",
-        lambda admin_id: {"ok": True, "listings": deletions or []},
+        lambda admin_id, *args, **kwargs: {"ok": True, "listings": deletions or []},
     )
     monkeypatch.setattr(
         "app.routers.admin_home.boards.list_revision_requests",
-        lambda admin_id: {"ok": True, "revision_requests": revisions or []},
+        lambda admin_id, *args, **kwargs: {"ok": True, "revision_requests": revisions or []},
     )
     monkeypatch.setattr(
-        "app.routers.admin_home.campaigns.list_campaigns", lambda: campaign_rows or []
+        "app.routers.admin_home.campaigns.list_campaigns",
+        lambda *args, **kwargs: campaign_rows or [],
     )
     monkeypatch.setattr(
         "app.routers.admin_home.boards.browse_published", lambda: published or []
@@ -241,14 +247,13 @@ def test_admin_dashboard_requires_admin_session(admin_client, alumni_client):
     assert "Admin dashboard" in page.text
 
 
-def test_admin_board_navigation_hides_alumni_submissions_link(admin_client):
-    page = admin_client.get("/app")
-
+def test_admin_uses_admin_dashboard_not_alumni_board(admin_client):
+    assert admin_client.get("/app").status_code == 403
+    page = admin_client.get("/admin")
     assert page.status_code == 200
-    assert re.search(
-        r'<a class="app-nav-link is-active" href="[^"]*/app">Browse boards</a>',
-        page.text,
-    )
+    assert "Admin dashboard" in page.text
+    assert re.search(r'href="[^"]*/admin">Admin</a>', page.text)
+    assert ">Browse boards</a>" not in page.text
     assert "My submissions" not in page.text
     assert re.search(r'href="[^"]*/app/dashboard', page.text) is None
 
@@ -418,6 +423,95 @@ def test_pending_listings_show_expanded_fields(admin_client, alumni_client):
         assert text in page.text
 
 
+def test_pending_submissions_are_collapsed_by_default(admin_client, monkeypatch):
+    _isolate_admin_context(
+        monkeypatch,
+        pending=[_sample_listing(8201), _sample_listing(8202)],
+    )
+
+    details = _submission_details(admin_client.get("/admin/moderation").text)
+
+    assert len(details) == 2
+    ids = []
+    for attrs, content in details:
+        assert 'class="admin-submission"' in attrs
+        assert not re.search(r"\bopen\b", attrs)
+        assert "<summary" in content
+        match = re.search(r'\bid="(submissionDetails\d+)"', attrs)
+        assert match
+        ids.append(match.group(1))
+    assert len(set(ids)) == 2
+
+
+def test_pending_submission_summary_shows_key_information(admin_client, monkeypatch):
+    _isolate_admin_context(
+        monkeypatch,
+        pending=[
+            _sample_listing(
+                8301,
+                kind="job",
+                title="Summary Job",
+                created_at="2099-03-04T09:30:00+00:00",
+            ),
+            _sample_listing(
+                8302,
+                kind="event",
+                title="Summary Event",
+                created_at="2099-05-06T17:00:00+00:00",
+            ),
+        ],
+    )
+
+    details = _submission_details(admin_client.get("/admin/moderation").text)
+
+    assert len(details) == 2
+    expected = (
+        (8301, "Summary Job", "Job", "2099-03-04T09:30:00+00:00"),
+        (8302, "Summary Event", "Event", "2099-05-06T17:00:00+00:00"),
+    )
+    for (_, content), (listing_id, title, kind, created_at) in zip(details, expected):
+        summary_match = re.search(r"<summary\b[^>]*>(.*?)</summary>", content, re.DOTALL)
+        assert summary_match
+        summary = summary_match.group(1)
+
+        assert title in summary
+        assert f"Listing #{listing_id}" in summary
+        assert kind in summary
+        assert "Test Author" in summary
+        assert created_at in summary
+        assert "Status:" in summary
+        assert "Pending" in summary
+        assert "Review details" in summary
+
+
+def test_pending_submission_actions_stay_outside_summary_and_keep_csrf(
+    admin_client, monkeypatch
+):
+    _isolate_admin_context(monkeypatch, pending=[_sample_listing(8401)])
+
+    html = admin_client.get("/admin/moderation").text
+    details = _submission_details(html)
+
+    assert len(details) == 1
+    _, content = details[0]
+    summary_match = re.search(r"<summary\b[^>]*>(.*?)</summary>", content, re.DOTALL)
+    assert summary_match
+    summary = summary_match.group(1)
+
+    assert "<form" not in summary
+    assert 'type="submit"' not in summary
+    assert content.count('<form method="post"') == 2
+    assert "/admin/listings/8401/publish" in content
+    assert "/admin/listings/8401/reject" in content
+    assert content.count('name="csrf_token"') == 2
+    assert 'name="rejection_reason"' in content
+    assert "Optional. Tell the author what to change" in content
+    assert "Approve listing #8401" in content
+    assert "Reject listing #8401" in content
+    assert content.count("data-admin-action") == 2
+    assert "button.disabled = true;" in html
+
+
 def test_admin_approves_pending_listing(admin_client, alumni_client):
     listing_id = _submit_listing(alumni_client, "job", "Approval Demo Role")
 
@@ -426,7 +520,7 @@ def test_admin_approves_pending_listing(admin_client, alumni_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/moderation")
+    assert "/admin/moderation" in response.headers["location"]
     row = next(
         row for row in boards.list_by_author(_alumni_id()) if row["id"] == listing_id
     )
@@ -447,7 +541,7 @@ def test_admin_rejects_with_reason(admin_client, alumni_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/moderation")
+    assert "/admin/moderation" in response.headers["location"]
     row = next(
         row for row in boards.list_by_author(_alumni_id()) if row["id"] == listing_id
     )
@@ -469,7 +563,7 @@ def test_backend_error_is_displayed(admin_client, monkeypatch):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/moderation")
+    assert "/admin/moderation" in response.headers["location"]
     page = admin_client.get("/admin/moderation")
     assert "listing is not pending" in page.text
     assert "alert-danger" in page.text
@@ -491,7 +585,7 @@ def test_deletion_requests_display_and_deny(admin_client, alumni_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/deletions")
+    assert "/admin/deletions" in response.headers["location"]
     pending_ids = [
         row["id"] for row in boards.list_deletion_requests(_admin_id())["listings"]
     ]
@@ -512,7 +606,7 @@ def test_deletion_approval_removes_listing(admin_client, alumni_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/deletions")
+    assert "/admin/deletions" in response.headers["location"]
     assert listing_id not in [row["id"] for row in boards.list_by_author(_alumni_id())]
     assert (
         f"Listing #{listing_id} permanently deleted."
@@ -522,7 +616,7 @@ def test_deletion_approval_removes_listing(admin_client, alumni_client):
     response = admin_client.post(
         f"/admin/listings/{listing_id}/deletion-request/approve", follow_redirects=False
     )
-    assert response.headers["location"].endswith("/admin/deletions")
+    assert "/admin/deletions" in response.headers["location"]
     assert "listing not found" in admin_client.get("/admin/deletions").text
 
 
@@ -534,7 +628,7 @@ def test_campaign_draft_created_and_listed(admin_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/campaigns")
+    assert "/admin/campaigns" in response.headers["location"]
     page = admin_client.get("/admin/campaigns")
     assert "Scholarship update" in page.text
     assert "Applications are open." in page.text
@@ -567,7 +661,7 @@ def test_campaign_form_requires_title_and_message(admin_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/campaigns")
+    assert "/admin/campaigns" in response.headers["location"]
     assert len(campaigns.list_campaigns()) == before
     assert (
         "Campaign title and message are required."
@@ -603,6 +697,25 @@ def test_campaign_form_selects_and_displays_audience(admin_client, monkeypatch):
     assert campaign["audience_type"] == "faculty"
     assert campaign["audience_value"] == "Science & Technology"
     assert "Faculty: Science &amp; Technology" in admin_client.get("/admin/campaigns").text
+
+
+def test_campaign_audience_and_filters_work_together(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        campaigns,
+        "audience_options",
+        lambda: {"faculty": ["Science"], "department": ["Computing"]},
+    )
+    query = "q=Target&status=draft&sort=subject_asc"
+    page = admin_client.get(f"/admin/campaigns?{query}")
+    assert 'value="Science"' in page.text
+    assert 'value="Target"' in page.text
+    response = admin_client.post(
+        f"/admin/campaigns?{query}",
+        data={"subject": "Target", "body": "Message", "audience_type": "all", "faculty": "Science"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith(f"/admin/campaigns?{query}")
 
 
 @pytest.mark.parametrize(
@@ -730,7 +843,7 @@ def test_admin_sends_campaign(admin_client):
         )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/campaigns")
+    assert "/admin/campaigns" in response.headers["location"]
     row = next(row for row in campaigns.list_campaigns() if row["id"] == campaign["id"])
     assert row["status"] == "sent"
     page = admin_client.get("/admin/campaigns")
@@ -748,7 +861,7 @@ def test_admin_schedules_campaign_with_utc_timestamp(admin_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/campaigns")
+    assert "/admin/campaigns" in response.headers["location"]
     row = next(row for row in campaigns.list_campaigns() if row["id"] == campaign["id"])
     assert row["status"] == "scheduled"
     assert row["scheduled_at"] == "2099-06-15T10:00:00+00:00"
@@ -767,7 +880,7 @@ def test_schedule_rejects_timestamp_without_timezone(admin_client):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/campaigns")
+    assert "/admin/campaigns" in response.headers["location"]
     row = next(row for row in campaigns.list_campaigns() if row["id"] == campaign["id"])
     assert row["status"] == "draft"
     assert (
@@ -1000,3 +1113,262 @@ def test_alumni_dashboard_remains_available(alumni_client):
 
     assert page.status_code == 200
     assert "My submissions" in page.text
+
+def test_moderation_filters_search_kind_sort_and_reset(admin_client, monkeypatch):
+    rows = [
+        _sample_listing(9101, title="Alpha Job", kind="job", created_at="2099-01-01T00:00:00+00:00"),
+        _sample_listing(9102, title="Beta Event", kind="event", created_at="2099-01-02T00:00:00+00:00"),
+        _sample_listing(9103, title="Gamma Job", kind="job", created_at="2099-01-03T00:00:00+00:00"),
+    ]
+
+    def fake_list_pending(*, q=None, kind=None, sort="created_desc"):
+        result = list(rows)
+        if kind in {"job", "event"}:
+            result = [r for r in result if r["kind"] == kind]
+        if q:
+            ql = q.lower()
+            result = [r for r in result if ql in r["title"].lower() or ql in r["body"].lower()]
+        if sort == "created_asc":
+            result.sort(key=lambda r: (r["created_at"], r["id"]))
+        elif sort == "title_asc":
+            result.sort(key=lambda r: (r["title"].lower(), r["id"]))
+        elif sort == "title_desc":
+            result.sort(key=lambda r: (r["title"].lower(), r["id"]), reverse=True)
+        else:
+            result.sort(key=lambda r: (r["created_at"], r["id"]), reverse=True)
+        return result
+
+    monkeypatch.setattr("app.routers.admin_home.boards.list_pending", fake_list_pending)
+    monkeypatch.setattr("app.routers.admin_home.get_user", lambda aid: {"display_name": "Test Author"})
+
+    page = admin_client.get("/admin/moderation?q=job&kind=job&sort=title_desc")
+    assert page.status_code == 200
+    assert "Gamma Job" in page.text
+    assert "Alpha Job" in page.text
+    assert "Beta Event" not in page.text
+    assert page.text.index("Gamma Job") < page.text.index("Alpha Job")
+    assert 'name="q"' in page.text and 'value="job"' in page.text
+    assert '<option value="job" selected' in page.text
+    assert '<option value="title_desc" selected' in page.text
+    assert "2 results matching current filters." in page.text
+    assert 'href="http://testserver/admin/moderation">Reset</a>' in page.text
+
+    reset = admin_client.get("/admin/moderation")
+    assert "Gamma Job" in reset.text and "Beta Event" in reset.text and "Alpha Job" in reset.text
+    assert '<option value="created_desc" selected' in reset.text
+
+
+def test_moderation_invalid_filter_values_fall_back_safely(admin_client, monkeypatch):
+    seen = {}
+
+    def fake_list_pending(*, q=None, kind=None, sort="created_desc"):
+        seen["args"] = {"q": q, "kind": kind, "sort": sort}
+        return [_sample_listing(9201)]
+
+    monkeypatch.setattr("app.routers.admin_home.boards.list_pending", fake_list_pending)
+    monkeypatch.setattr("app.routers.admin_home.get_user", lambda aid: {"display_name": "Test Author"})
+
+    page = admin_client.get("/admin/moderation?q=%20+bad+%20&kind=oops&sort=DROP%20TABLE")
+    assert page.status_code == 200
+    assert seen["args"] == {"q": "bad", "kind": "", "sort": "created_desc"}
+    assert 'value="bad"' in page.text
+    assert '<option value="" selected' in page.text
+    assert '<option value="created_desc" selected' in page.text
+
+
+def test_moderation_empty_filtered_results_show_reset(admin_client, monkeypatch):
+    monkeypatch.setattr("app.routers.admin_home.boards.list_pending", lambda **kwargs: [])
+    monkeypatch.setattr("app.routers.admin_home.get_user", lambda aid: {"display_name": "Test Author"})
+
+    page = admin_client.get("/admin/moderation?q=missing&kind=job")
+    assert page.status_code == 200
+    assert "No matching results." in page.text
+    assert 'href="http://testserver/admin/moderation">Reset filters</a>' in page.text
+    assert "No job or event listings are awaiting review." not in page.text
+    assert 'value="missing"' in page.text
+
+
+def test_moderation_action_preserves_valid_filters(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.admin_home.boards.publish_listing",
+        lambda admin_id, listing_id: {"ok": True},
+    )
+    response = admin_client.post(
+        "/admin/listings/999/publish?q=Role&kind=job&sort=title_asc",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/admin/moderation?q=Role&kind=job&sort=title_asc")
+
+
+def test_revision_filters_and_preserved_action(admin_client, monkeypatch):
+    rows = [
+        _sample_revision(9301) | {"requested_at": "2099-01-01T00:00:00+00:00"},
+        _sample_revision(9302) | {"requested_at": "2099-01-02T00:00:00+00:00"},
+    ]
+    rows[0]["original"]["title"] = "Alpha Role"
+    rows[0]["original"]["kind"] = "job"
+    rows[0]["proposed"]["title"] = "Alpha Role"
+    rows[0]["proposed"]["kind"] = "job"
+    rows[1]["original"]["title"] = "Beta Event"
+    rows[1]["original"]["kind"] = "event"
+    rows[1]["proposed"]["title"] = "Beta Event"
+    rows[1]["proposed"]["kind"] = "event"
+
+    def fake_list_revision_requests(admin_id, *, q=None, kind=None, sort="requested_desc"):
+        result = list(rows)
+        if kind in {"job", "event"}:
+            result = [r for r in result if r["original"]["kind"] == kind]
+        if q:
+            ql = q.lower()
+            result = [r for r in result if ql in r["original"]["title"].lower()]
+        if sort == "requested_asc":
+            result.sort(key=lambda r: (r["requested_at"], r["listing_id"]))
+        else:
+            result.sort(key=lambda r: (r["requested_at"], r["listing_id"]), reverse=True)
+        return {"ok": True, "revision_requests": result}
+
+    monkeypatch.setattr("app.routers.admin_home.boards.list_revision_requests", fake_list_revision_requests)
+    monkeypatch.setattr("app.routers.admin_home.get_user", lambda aid: {"display_name": "Test Author"})
+    monkeypatch.setattr("app.routers.admin_home.boards.approve_revision", lambda admin_id, listing_id: {"ok": True})
+
+    page = admin_client.get("/admin/revisions?kind=event&sort=requested_desc")
+    assert page.status_code == 200
+    assert "Beta Event" in page.text
+    assert "Alpha Role" not in page.text
+    assert '<option value="event" selected' in page.text
+
+    response = admin_client.post(
+        "/admin/listings/9302/revision-request/approve?kind=event&sort=requested_desc",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/admin/revisions?kind=event&sort=requested_desc")
+
+
+def test_deletion_filters_and_preserved_action(admin_client, monkeypatch):
+    rows = [
+        _sample_listing(9401, title="Zulu Job", kind="job", deletion_requested=True, created_at="2099-01-01T00:00:00+00:00"),
+        _sample_listing(9402, title="Alpha Event", kind="event", deletion_requested=True, created_at="2099-01-02T00:00:00+00:00"),
+    ]
+
+    def fake_list_deletion_requests(admin_id, *, q=None, kind=None, sort="created_desc"):
+        result = list(rows)
+        if kind in {"job", "event"}:
+            result = [r for r in result if r["kind"] == kind]
+        if sort == "title_asc":
+            result.sort(key=lambda r: (r["title"].lower(), r["id"]))
+        elif sort == "created_asc":
+            result.sort(key=lambda r: (r["created_at"], r["id"]))
+        else:
+            result.sort(key=lambda r: (r["created_at"], r["id"]), reverse=True)
+        return {"ok": True, "listings": result}
+
+    monkeypatch.setattr("app.routers.admin_home.boards.list_deletion_requests", fake_list_deletion_requests)
+    monkeypatch.setattr("app.routers.admin_home.get_user", lambda aid: {"display_name": "Test Author"})
+    monkeypatch.setattr("app.routers.admin_home.boards.deny_deletion", lambda admin_id, listing_id: {"ok": True})
+
+    page = admin_client.get("/admin/deletions?sort=title_asc")
+    assert page.status_code == 200
+    assert page.text.index("Alpha Event") < page.text.index("Zulu Job")
+    assert '<option value="title_asc" selected' in page.text
+
+    response = admin_client.post(
+        "/admin/listings/9402/deletion-request/deny?sort=title_asc",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/admin/deletions?sort=title_asc")
+
+
+def test_campaign_filters_status_search_sort_and_reset(admin_client, monkeypatch):
+    rows = [
+        _sample_campaign(9501, subject="Beta Draft", body="hello", status="draft"),
+        _sample_campaign(9502, subject="Alpha Sent", body="world", status="sent"),
+        _sample_campaign(9503, subject="Gamma Scheduled", body="hello there", status="scheduled"),
+    ]
+    rows[0]["created_at"] = "2099-01-02T00:00:00+00:00"
+    rows[1]["created_at"] = "2099-01-03T00:00:00+00:00"
+    rows[2]["created_at"] = "2099-01-01T00:00:00+00:00"
+
+    def fake_list_campaigns(*, q=None, status=None, sort="created_desc"):
+        result = list(rows)
+        if status in {"draft", "scheduled", "sending", "sent"}:
+            result = [r for r in result if r["status"] == status]
+        if q:
+            ql = q.lower()
+            result = [r for r in result if ql in r["subject"].lower() or ql in r["body"].lower()]
+        if sort == "created_asc":
+            result.sort(key=lambda r: (r.get("created_at", ""), r["id"]))
+        elif sort == "subject_asc":
+            result.sort(key=lambda r: (r["subject"].lower(), r["id"]))
+        elif sort == "subject_desc":
+            result.sort(key=lambda r: (r["subject"].lower(), r["id"]), reverse=True)
+        else:
+            result.sort(key=lambda r: (r.get("created_at", ""), r["id"]), reverse=True)
+        return result
+
+    monkeypatch.setattr("app.routers.admin_home.campaigns.list_campaigns", fake_list_campaigns)
+
+    page = admin_client.get("/admin/campaigns?q=hello&status=draft&sort=subject_desc")
+    assert page.status_code == 200
+    assert "Beta Draft" in page.text
+    assert "Alpha Sent" not in page.text
+    assert "Gamma Scheduled" not in page.text
+    assert '<option value="draft" selected' in page.text
+    assert '<option value="subject_desc" selected' in page.text
+    assert "1 result matching current filters." in page.text
+
+    reset = admin_client.get("/admin/campaigns")
+    assert "Alpha Sent" in reset.text
+    assert '<option value="created_desc" selected' in reset.text
+
+
+def test_campaign_action_preserves_filters(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.admin_home.campaigns.send_campaign",
+        lambda admin_id, campaign_id: {"ok": True, "campaign": {"id": campaign_id}},
+    )
+    response = admin_client.post(
+        "/admin/campaigns/77/send?q=Beta&status=draft&sort=subject_asc",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/admin/campaigns?q=Beta&status=draft&sort=subject_asc")
+
+def test_listing_filters_service_level_search_kind_sort_and_ties(test_session, monkeypatch):
+    from app.services import boards as boards_service
+    from tests.listing_test_helpers import complete_listing_payload
+
+    monkeypatch.setattr(boards_service, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin", email="admin-list@test.com")
+    author = add_user(test_session, role="alumni", email="author-list@test.com")
+
+    def add_listing(title, kind, created_at):
+        from app.models.listing import Listing
+        payload = complete_listing_payload({"kind": kind, "title": title, "body": f"{title} body"})
+        row = Listing(author_id=author.id, **payload, status="pending", created_at=created_at)
+        test_session.add(row)
+        test_session.commit()
+        test_session.refresh(row)
+        return row
+
+    l1 = add_listing("Beta Job", "job", "2099-01-01T00:00:00+00:00")
+    l2 = add_listing("Alpha Job", "job", "2099-01-01T00:00:00+00:00")
+    l3 = add_listing("Gamma Event", "event", "2099-01-02T00:00:00+00:00")
+
+    jobs = boards_service.list_pending(q="job", kind="job", sort="title_asc")
+    assert [r["title"] for r in jobs] == ["Alpha Job", "Beta Job"]
+    assert all(r["kind"] == "job" for r in jobs)
+
+    newest = boards_service.list_pending(sort="created_desc")
+    same_day = [r for r in newest if r["created_at"] == "2099-01-01T00:00:00+00:00"]
+    assert [r["id"] for r in same_day] == sorted([l1.id, l2.id], reverse=True)
+
+    invalid = boards_service.list_pending(kind="bad", sort="bad")
+    assert [r["id"] for r in invalid[:3]] == [l3.id, l2.id, l1.id]
+
+    del_result = boards_service.list_deletion_requests(admin.id, q="Gamma", kind="event", sort="created_desc")
+    assert del_result["ok"] is True
+    assert del_result["listings"] == []

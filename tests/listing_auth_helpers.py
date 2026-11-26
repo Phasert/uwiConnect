@@ -6,6 +6,9 @@ from tests.csrf_test_helpers import csrf_token_from_html
 
 _credentials: dict[int, tuple[str, str]] = {}
 
+VERIFIED_ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
+VERIFIED_ALUMNI_PASSWORD = "alumni-dev"
+
 
 def login(client: TestClient, email: str, password: str) -> dict:
     client.headers.pop("X-CSRF-Token", None)
@@ -38,3 +41,13 @@ def auth_headers(client: TestClient, user_id: int) -> dict[str, str]:
     email, password = _credentials[user_id]
     login(client, email, password)
     return {"X-CSRF-Token": client.headers["X-CSRF-Token"]}
+
+
+def browse_as_verified(
+    client: TestClient, url: str = "/api/boards", params: dict | None = None
+) -> list[dict]:
+    """Read a board URL with the verified-alumni access rule applied."""
+    login(client, VERIFIED_ALUMNI_EMAIL, VERIFIED_ALUMNI_PASSWORD)
+    response = client.get(url, params=params)
+    assert response.status_code == 200, response.text
+    return response.json()["listings"]

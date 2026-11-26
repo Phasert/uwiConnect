@@ -6,7 +6,13 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.seed import seed
 from app.services.observer import notification_publisher
-from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_auth_helpers import (
+    VERIFIED_ALUMNI_EMAIL,
+    VERIFIED_ALUMNI_PASSWORD,
+    auth_headers,
+    browse_as_verified,
+    login,
+)
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -54,9 +60,7 @@ def _reject(user_id: int, listing_id: int):
 
 
 def _board(params: dict | None = None) -> list:
-    r = client.get("/api/boards", params=params)
-    assert r.status_code == 200
-    return r.json()["listings"]
+    return browse_as_verified(client, "/api/boards", params)
 
 
 def _web_login() -> None:
@@ -210,6 +214,7 @@ def test_search_does_not_emit_notification_events():
 
 
 def test_existing_browse_route_shape_is_unchanged():
+    login(client, VERIFIED_ALUMNI_EMAIL, VERIFIED_ALUMNI_PASSWORD)
     r = client.get("/api/boards")
     assert r.status_code == 200
     assert "listings" in r.json()

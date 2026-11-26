@@ -21,7 +21,7 @@
       to an inbox; per-recipient email preferences are not currently available.
     </div>
 
-    <form method="post" action="{{ url_for('admin_create_campaign') }}" data-admin-action class="row g-3 mb-4">
+    <form method="post" action="{{ url_for('admin_create_campaign') }}{{ filter_query }}" data-admin-action class="row g-3 mb-4">
       <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
       <div class="col-12 col-md-6">
         <label class="form-label" for="campaignSubject">Campaign title</label>
@@ -61,6 +61,38 @@
         <button type="submit" class="btn btn-primary">Create draft</button>
       </div>
     </form>
+
+    <form method="get" action="{{ url_for('admin_campaigns_view') }}" class="row g-2 align-items-end mb-3" aria-label="Filter campaigns">
+      <div class="col-12 col-md-4">
+        <label class="form-label small mb-1" for="campaignQ">Search title or message</label>
+        <input class="form-control form-control-sm" id="campaignQ" name="q" type="search" value="{{ filters.q | e }}" placeholder="Search campaigns">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="campaignStatus">Status</label>
+        <select class="form-select form-select-sm" id="campaignStatus" name="status">
+          <option value=""{% if filters.status == '' %} selected{% endif %}>All statuses</option>
+          <option value="draft"{% if filters.status == 'draft' %} selected{% endif %}>Draft</option>
+          <option value="scheduled"{% if filters.status == 'scheduled' %} selected{% endif %}>Scheduled</option>
+          <option value="sending"{% if filters.status == 'sending' %} selected{% endif %}>Sending</option>
+          <option value="sent"{% if filters.status == 'sent' %} selected{% endif %}>Sent</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="campaignSort">Sort by</label>
+        <select class="form-select form-select-sm" id="campaignSort" name="sort">
+          <option value="created_desc"{% if filters.sort == 'created_desc' %} selected{% endif %}>Newest first</option>
+          <option value="created_asc"{% if filters.sort == 'created_asc' %} selected{% endif %}>Oldest first</option>
+          <option value="subject_asc"{% if filters.sort == 'subject_asc' %} selected{% endif %}>Title A–Z</option>
+          <option value="subject_desc"{% if filters.sort == 'subject_desc' %} selected{% endif %}>Title Z–A</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-auto d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_campaigns_view') }}">Reset</a>
+      </div>
+    </form>
+
+    <p class="small text-body-secondary mb-3" role="status">{{ result_count }} result{% if result_count != 1 %}s{% endif %}{% if filters.q or filters.status %} matching current filters{% endif %}.</p>
 
     {% if campaigns %}
     <div class="table-responsive">
@@ -104,11 +136,11 @@
             </td>
             <td>
               {% if campaign.status == 'draft' %}
-              <form method="post" action="{{ url_for('admin_send_campaign', campaign_id=campaign.id) }}" data-admin-action class="mb-2">
+              <form method="post" action="{{ url_for('admin_send_campaign', campaign_id=campaign.id) }}{{ filter_query }}" data-admin-action class="mb-2">
                 <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <button type="submit" class="btn btn-sm btn-success">Send now</button>
               </form>
-              <form method="post" action="{{ url_for('admin_schedule_campaign', campaign_id=campaign.id) }}" data-admin-action data-schedule-form>
+              <form method="post" action="{{ url_for('admin_schedule_campaign', campaign_id=campaign.id) }}{{ filter_query }}" data-admin-action data-schedule-form>
                 <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                 <label class="form-label small" for="scheduleAt{{ campaign.id }}">Schedule for</label>
                 <input class="form-control form-control-sm mb-1" type="datetime-local" id="scheduleAt{{ campaign.id }}" data-schedule-input />
@@ -125,7 +157,13 @@
       </table>
     </div>
     {% else %}
-    <div class="alert alert-info mb-0" role="status">No campaigns have been created yet.</div>
+    <div class="alert alert-info mb-0" role="status">
+      {% if filters.q or filters.status %}
+      No matching results. <a href="{{ url_for('admin_campaigns_view') }}">Reset filters</a>.
+      {% else %}
+      No campaigns have been created yet.
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 </section>

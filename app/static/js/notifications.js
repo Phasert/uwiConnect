@@ -135,9 +135,13 @@
   }
 
   function updateIndicators(notifications) {
-    const total = notifications.length;
-    badge.textContent = '0';
-    badge.classList.add('d-none');
+    const uniqueIds = new Set();
+    Array.from(notifications).forEach(function (item) {
+      uniqueIds.add(itemKey(item));
+    });
+    const total = uniqueIds.size;
+    badge.textContent = total > 99 ? '99+' : String(total);
+    badge.classList.toggle('d-none', total === 0);
     bell.setAttribute(
       'aria-label',
       total ? 'Notifications, ' + total + ' total' : 'Notifications'

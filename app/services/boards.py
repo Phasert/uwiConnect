@@ -295,37 +295,87 @@ def list_by_author(author_id: int) -> list[dict[str, Any]]:
         ]
 
 
-def list_pending() -> list[dict[str, Any]]:
+def _listing_order(sort: str):
+    if sort == "created_asc":
+        return (Listing.created_at.asc(), Listing.id.asc())
+    if sort == "title_asc":
+        return (Listing.title.asc(), Listing.id.asc())
+    if sort == "title_desc":
+        return (Listing.title.desc(), Listing.id.desc())
+    return (Listing.created_at.desc(), Listing.id.desc())
+
+
+def _apply_listing_filters(stmt, *, q: str | None = None, kind: str | None = None):
+    if kind in {"job", "event"}:
+        stmt = stmt.where(Listing.kind == kind)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(Listing.title.ilike(pattern), Listing.body.ilike(pattern))
+        )
+    return stmt
+
+
+def list_pending(
+    *, q: str | None = None, kind: str | None = None, sort: str = "created_desc"
+) -> list[dict[str, Any]]:
     with Session(engine) as session:
-        rows = session.exec(
-            select(Listing).where(Listing.status == "pending").order_by(Listing.id)
-        ).all()
+        stmt = select(Listing).where(Listing.status == "pending")
+        stmt = _apply_listing_filters(stmt, q=q, kind=kind)
+        stmt = stmt.order_by(*_listing_order(sort))
+        rows = session.exec(stmt).all()
         return [r.model_dump() for r in rows]
 
 
-def list_deletion_requests(admin_id: int) -> dict[str, Any]:
+def list_deletion_requests(
+    admin_id: int,
+    *,
+    q: str | None = None,
+    kind: str | None = None,
+    sort: str = "created_desc",
+) -> dict[str, Any]:
     user = get_user(admin_id)
     if not user or user["role"] != "admin":
         return {"ok": False, "error": "admin only"}
     with Session(engine) as session:
-        rows = session.exec(
-            select(Listing)
-            .where(Listing.deletion_requested.is_(True))
-            .order_by(Listing.id)
-        ).all()
+        stmt = select(Listing).where(Listing.deletion_requested.is_(True))
+        stmt = _apply_listing_filters(stmt, q=q, kind=kind)
+        stmt = stmt.order_by(*_listing_order(sort))
+        rows = session.exec(stmt).all()
         return {"ok": True, "listings": [row.model_dump() for row in rows]}
 
 
-def list_revision_requests(admin_id: int) -> dict[str, Any]:
+def _revision_order(sort: str):
+    if sort == "requested_asc":
+        return (ListingRevision.requested_at.asc(), ListingRevision.listing_id.asc())
+    if sort == "title_asc":
+        return (ListingRevision.title.asc(), ListingRevision.listing_id.asc())
+    if sort == "title_desc":
+        return (ListingRevision.title.desc(), ListingRevision.listing_id.desc())
+    return (ListingRevision.requested_at.desc(), ListingRevision.listing_id.desc())
+
+
+def list_revision_requests(
+    admin_id: int,
+    *,
+    q: str | None = None,
+    kind: str | None = None,
+    sort: str = "requested_desc",
+) -> dict[str, Any]:
     user = get_user(admin_id)
     if not user or user["role"] != "admin":
         return {"ok": False, "error": "admin only"}
     with Session(engine) as session:
-        revisions = session.exec(
-            select(ListingRevision)
-            .where(ListingRevision.status == "pending")
-            .order_by(ListingRevision.requested_at)
-        ).all()
+        stmt = select(ListingRevision).where(ListingRevision.status == "pending")
+        if kind in {"job", "event"}:
+            stmt = stmt.where(ListingRevision.kind == kind)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(ListingRevision.title.ilike(pattern), ListingRevision.body.ilike(pattern))
+            )
+        stmt = stmt.order_by(*_revision_order(sort))
+        revisions = session.exec(stmt).all()
         requests = []
         for revision in revisions:
             listing = session.get(Listing, revision.listing_id)
