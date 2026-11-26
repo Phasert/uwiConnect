@@ -60,9 +60,16 @@ def _publish(author_id, admin_id, title, proposed_title):
 
 
 def test_every_dashboard_post_form_has_csrf_field():
-    clients = (
-        (_client(ALUMNI_EMAIL, ALUMNI_PASSWORD), "/app/dashboard"),
-        (_client(ADMIN_EMAIL, ADMIN_PASSWORD), "/admin"),
+    clients = [(_client(ALUMNI_EMAIL, ALUMNI_PASSWORD), "/app/dashboard")]
+    clients.extend(
+        (_client(ADMIN_EMAIL, ADMIN_PASSWORD), path)
+        for path in (
+            "/admin",
+            "/admin/moderation",
+            "/admin/revisions",
+            "/admin/deletions",
+            "/admin/campaigns",
+        )
     )
 
     for client, path in clients:
@@ -104,7 +111,7 @@ def test_alumni_submission_works_with_hidden_token_and_no_header():
 
 def test_admin_campaign_works_with_hidden_token_and_no_header():
     client = _client(ADMIN_EMAIL, ADMIN_PASSWORD, keep_header=False)
-    page = client.get("/admin")
+    page = client.get("/admin/campaigns")
     token = csrf_token_from_html(page.text)
 
     response = client.post(
@@ -142,13 +149,15 @@ def test_revision_requests_are_visible_and_reviewable_from_admin_dashboard():
     author_id = _alumni_id()
     admin_id = _admin_id()
 
-    listing_id = _publish(author_id, admin_id, "Revision Demo Role", "Revised Demo Role")
+    listing_id = _publish(
+        author_id, admin_id, "Revision Demo Role", "Revised Demo Role"
+    )
 
     alum_page = alum.get("/app/dashboard")
     assert "Revision requested — awaiting admin review" in alum_page.text
     assert f'data-revise-id="{listing_id}"' not in alum_page.text
 
-    admin_page = admin.get("/admin")
+    admin_page = admin.get("/admin/revisions")
     assert "Revision requests" in admin_page.text
     assert "Approve revision" in admin_page.text
     assert "Deny revision" in admin_page.text
@@ -160,9 +169,15 @@ def test_revision_requests_are_visible_and_reviewable_from_admin_dashboard():
     )
 
     assert response.status_code == 303
-    row = next(row for row in boards.list_by_author(author_id) if row["id"] == listing_id)
+    assert response.headers["location"].endswith("/admin/revisions")
+    row = next(
+        row for row in boards.list_by_author(author_id) if row["id"] == listing_id
+    )
     assert row["title"] == "Revised Demo Role"
-    assert f"Listing #{listing_id} revision approved." in admin.get("/admin").text
+    assert (
+        f"Listing #{listing_id} revision approved."
+        in admin.get("/admin/revisions").text
+    )
 
 
 def test_admin_can_deny_a_revision_without_changing_the_listing():
@@ -173,16 +188,22 @@ def test_admin_can_deny_a_revision_without_changing_the_listing():
 
     listing_id = _publish(author_id, admin_id, "Deny Demo Role", "Should Not Apply")
 
-    assert "Approve revision" in admin.get("/admin").text
+    assert "Approve revision" in admin.get("/admin/revisions").text
     response = admin.post(
         f"/admin/listings/{listing_id}/revision-request/deny",
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    row = next(row for row in boards.list_by_author(author_id) if row["id"] == listing_id)
+    assert response.headers["location"].endswith("/admin/revisions")
+    row = next(
+        row for row in boards.list_by_author(author_id) if row["id"] == listing_id
+    )
     assert row["title"] == "Deny Demo Role"
-    assert f"Revision request for listing #{listing_id} denied." in admin.get("/admin").text
+    assert (
+        f"Revision request for listing #{listing_id} denied."
+        in admin.get("/admin/revisions").text
+    )
     assert "Should Not Apply" not in alum.get("/app/dashboard").text
 
 
