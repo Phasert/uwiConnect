@@ -195,3 +195,69 @@ def test_immediate_send_cannot_bypass_scheduled_or_sending_states(
     assert result["ok"] is False
     assert result["error"] == f"campaign is already {status}"
     assert campaign.status == status
+
+def test_list_campaigns_filters_by_status_and_search(test_session, monkeypatch) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    c1 = add_campaign(test_session, 1)
+    c1.subject = "Career Fair"
+    c1.body = "Jobs and networking"
+    c1.status = "draft"
+    c1.created_at = "2099-01-01T00:00:00+00:00"
+    c2 = add_campaign(test_session, 1)
+    c2.subject = "Mentorship"
+    c2.body = "Career advice"
+    c2.status = "sent"
+    c2.created_at = "2099-01-02T00:00:00+00:00"
+    c3 = add_campaign(test_session, 1)
+    c3.subject = "Scholarship"
+    c3.body = "Funding"
+    c3.status = "draft"
+    c3.created_at = "2099-01-03T00:00:00+00:00"
+    test_session.add(c1)
+    test_session.add(c2)
+    test_session.add(c3)
+    test_session.commit()
+
+    rows = campaigns.list_campaigns(q="career", status="draft", sort="created_desc")
+    assert [r["subject"] for r in rows] == ["Career Fair"]
+    assert all(r["status"] == "draft" for r in rows)
+
+
+def test_list_campaigns_sort_and_tie_breaker(test_session, monkeypatch) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    c1 = add_campaign(test_session, 1)
+    c1.subject = "Beta"
+    c1.created_at = "2099-01-01T00:00:00+00:00"
+    c2 = add_campaign(test_session, 1)
+    c2.subject = "Alpha"
+    c2.created_at = "2099-01-01T00:00:00+00:00"
+    c3 = add_campaign(test_session, 1)
+    c3.subject = "Gamma"
+    c3.created_at = "2099-01-02T00:00:00+00:00"
+    test_session.add(c1)
+    test_session.add(c2)
+    test_session.add(c3)
+    test_session.commit()
+
+    by_subject = campaigns.list_campaigns(sort="subject_asc")
+    assert [r["subject"] for r in by_subject[:3]] == ["Alpha", "Beta", "Gamma"]
+
+    by_newest = campaigns.list_campaigns(sort="created_desc")
+    same_time = [r for r in by_newest if r["created_at"] == "2099-01-01T00:00:00+00:00"]
+    assert [r["id"] for r in same_time] == sorted([r["id"] for r in same_time], reverse=True)
+
+
+def test_list_campaigns_invalid_status_and_sort_fall_back_safely(test_session, monkeypatch) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    c1 = add_campaign(test_session, 1)
+    c1.subject = "First"
+    c1.created_at = "2099-01-01T00:00:00+00:00"
+    c2 = add_campaign(test_session, 1)
+    c2.subject = "Second"
+    c2.created_at = "2099-01-02T00:00:00+00:00"
+    test_session.add(c1)
+    test_session.add(c2)
+    test_session.commit()
+
+    rows = campaigns.list_campaigns(status="bad';DROP TABLE campaign;--", sort="nope")
+    assert [r["subject"] for r in rows[:2]] == ["Second", "First"]

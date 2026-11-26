@@ -1,4 +1,5 @@
 import re
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -169,7 +170,9 @@ def test_revision_requests_are_visible_and_reviewable_from_admin_dashboard():
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/revisions")
+    location = urlparse(response.headers["location"])
+    assert location.path == "/admin/revisions"
+    assert parse_qs(location.query) == {"sort": ["requested_desc"]}
     row = next(
         row for row in boards.list_by_author(author_id) if row["id"] == listing_id
     )
@@ -195,7 +198,9 @@ def test_admin_can_deny_a_revision_without_changing_the_listing():
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/admin/revisions")
+    location = urlparse(response.headers["location"])
+    assert location.path == "/admin/revisions"
+    assert parse_qs(location.query) == {"sort": ["requested_desc"]}
     row = next(
         row for row in boards.list_by_author(author_id) if row["id"] == listing_id
     )

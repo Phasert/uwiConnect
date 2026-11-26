@@ -15,6 +15,37 @@
   <div class="card-body">
     <h2 id="revisionsHeading" class="h5">Revision requests</h2>
     <p class="text-body-secondary small">Approve proposed changes or deny them without changing the published listing.</p>
+
+    <form method="get" action="{{ url_for('admin_revisions_view') }}" class="row g-2 align-items-end mb-3" aria-label="Filter revision requests">
+      <div class="col-12 col-md-4">
+        <label class="form-label small mb-1" for="revisionQ">Search title or description</label>
+        <input class="form-control form-control-sm" id="revisionQ" name="q" type="search" value="{{ filters.q | e }}" placeholder="Search revisions">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="revisionKind">Type</label>
+        <select class="form-select form-select-sm" id="revisionKind" name="kind">
+          <option value=""{% if filters.kind == '' %} selected{% endif %}>All types</option>
+          <option value="job"{% if filters.kind == 'job' %} selected{% endif %}>Job</option>
+          <option value="event"{% if filters.kind == 'event' %} selected{% endif %}>Event</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="revisionSort">Sort by</label>
+        <select class="form-select form-select-sm" id="revisionSort" name="sort">
+          <option value="requested_desc"{% if filters.sort == 'requested_desc' %} selected{% endif %}>Newest first</option>
+          <option value="requested_asc"{% if filters.sort == 'requested_asc' %} selected{% endif %}>Oldest first</option>
+          <option value="title_asc"{% if filters.sort == 'title_asc' %} selected{% endif %}>Title A–Z</option>
+          <option value="title_desc"{% if filters.sort == 'title_desc' %} selected{% endif %}>Title Z–A</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-auto d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_revisions_view') }}">Reset</a>
+      </div>
+    </form>
+
+    <p class="small text-body-secondary mb-3" role="status">{{ result_count }} result{% if result_count != 1 %}s{% endif %}{% if filters.q or filters.kind %} matching current filters{% endif %}.</p>
+
     {% set revision_fields = [
       ('kind', 'Listing type'),
       ('title', 'Title'),
@@ -80,11 +111,11 @@
         <hr class="my-3 admin-review-divider">
 
         <div class="d-flex flex-wrap gap-2">
-          <form method="post" action="{{ url_for('admin_approve_revision', listing_id=revision.listing_id) }}" data-admin-action class="m-0">
+          <form method="post" action="{{ url_for('admin_approve_revision', listing_id=revision.listing_id) }}{{ filter_query }}" data-admin-action class="m-0">
             <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
             <button type="submit" class="btn btn-sm btn-success">Approve revision for #{{ revision.listing_id }}</button>
           </form>
-          <form method="post" action="{{ url_for('admin_deny_revision', listing_id=revision.listing_id) }}" data-admin-action class="m-0">
+          <form method="post" action="{{ url_for('admin_deny_revision', listing_id=revision.listing_id) }}{{ filter_query }}" data-admin-action class="m-0">
             <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
             <button type="submit" class="btn btn-sm btn-outline-secondary">Deny revision for #{{ revision.listing_id }}</button>
           </form>
@@ -93,7 +124,13 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">No revision requests are awaiting review.</div>
+    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">
+      {% if filters.q or filters.kind %}
+      No matching results. <a href="{{ url_for('admin_revisions_view') }}">Reset filters</a>.
+      {% else %}
+      No revision requests are awaiting review.
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 </section>
