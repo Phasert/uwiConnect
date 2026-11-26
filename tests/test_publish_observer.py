@@ -108,7 +108,7 @@ def _create_campaign(user_id: int, subject: str, body: str) -> dict:
     r = client.post(
         "/api/admin/campaigns",
         json={"subject": subject, "body": body},
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert r.status_code == 200
     return r.json()
@@ -117,7 +117,7 @@ def _create_campaign(user_id: int, subject: str, body: str) -> dict:
 def _send_campaign(user_id: int, campaign_id: int):
     return client.post(
         f"/api/admin/campaigns/{campaign_id}/send",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
@@ -125,7 +125,26 @@ def _schedule_campaign(user_id: int, campaign_id: int, scheduled_at: str):
     return client.post(
         f"/api/admin/campaigns/{campaign_id}/schedule",
         json={"scheduled_at": scheduled_at},
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
+    )
+
+
+def test_campaign_api_does_not_trust_x_user_id():
+    unauthenticated = TestClient(app)
+    csrf_token = unauthenticated.get("/api/auth/csrf").json()["csrf_token"]
+    headers = {
+        "X-User-Id": "1",
+        "X-CSRF-Token": csrf_token,
+    }
+
+    assert unauthenticated.get("/api/admin/campaigns", headers=headers).status_code == 401
+    assert (
+        unauthenticated.post(
+            "/api/admin/campaigns",
+            json={"subject": "Forged", "body": "Must not create"},
+            headers=headers,
+        ).status_code
+        == 401
     )
 
 

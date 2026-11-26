@@ -14,7 +14,12 @@
 <section class="card" id="campaigns" aria-labelledby="campaignHeading">
   <div class="card-body">
     <h2 id="campaignHeading" class="h5">Campaign management</h2>
-    <p class="text-body-secondary small">Sending a campaign publishes an in-app Observer notification. This demo does not deliver email.</p>
+    <div class="alert alert-info small" role="note">
+      Campaign status reflects successful website notification delivery to eligible verified alumni.
+      If notification email is enabled, email delivery is attempted on a best-effort basis and email
+      failures alone do not trigger campaign retries. A “Sent” status does not guarantee delivery
+      to an inbox; per-recipient email preferences are not currently available.
+    </div>
 
     <form method="post" action="{{ url_for('admin_create_campaign') }}" data-admin-action class="row g-3 mb-4">
       <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
@@ -47,8 +52,8 @@
           {% for campaign in campaigns %}
           <tr>
             <td>#{{ campaign.id }}</td>
-            <td>{{ campaign.subject }}</td>
-            <td class="small">{{ campaign.body }}</td>
+            <td>{{ campaign.subject | e }}</td>
+            <td class="small">{{ campaign.body | e }}</td>
             <td>
               {% if campaign.status == 'draft' %}
               <span class="badge bg-secondary">Draft</span>

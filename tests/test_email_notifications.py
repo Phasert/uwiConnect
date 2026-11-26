@@ -507,8 +507,13 @@ def test_observer_uses_shared_selector_for_listing_audience(
     assert [call["recipient"] for call in sender.calls] == [qualified.email]
 
 
-def test_campaign_send_succeeds_when_email_fails_but_website_delivery_succeeds(
-    test_session, monkeypatch, delivery_store, website_engine
+@pytest.mark.parametrize(
+    "email_failure",
+    [False, True],
+    ids=["email-success", "email-failure"],
+)
+def test_campaign_send_success_depends_on_website_delivery(
+    test_session, monkeypatch, delivery_store, website_engine, email_failure, caplog
 ) -> None:
     monkeypatch.setattr(campaigns_module, "engine", test_session.get_bind())
     monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
@@ -517,14 +522,55 @@ def test_campaign_send_succeeds_when_email_fails_but_website_delivery_succeeds(
         test_session, "campaign-alum@my.uwi.edu", faculty=None, department=None
     )
     campaign = add_campaign(test_session, admin.id)
+    sender = FakeSender(failures=[alumnus.email] if email_failure else [])
     email_observer = EmailNotificationObserver(
-        sender=FakeSender(failures=[alumnus.email]),
+        sender=sender,
         recipient_selector=email_recipient_selector,
         delivery_store=delivery_store,
     )
 
     with isolate_publisher():
         notification_publisher.subscribe(email_observer)
+        notification_publisher.subscribe(website_notification_observer)
+        result = campaigns_module.send_campaign(admin.id, campaign.id)
+
+    assert result["ok"] is True
+    assert result["campaign"]["status"] == "sent"
+    assert len(sender.calls) == 1
+    if email_failure:
+        assert "EmailNotificationObserver failed for event type campaign.sent" in caplog.text
+
+    rows = test_session.exec(
+        select(Notification).where(
+            Notification.event_id == f"campaign-{campaign.id}-sent"
+        )
+    ).all()
+    assert [row.user_id for row in rows] == [alumnus.id]
+
+    retry = campaigns_module.send_campaign(admin.id, campaign.id)
+    assert retry["ok"] is True
+    assert retry["campaign"]["status"] == "sent"
+    assert len(sender.calls) == 1
+    retry_rows = test_session.exec(
+        select(Notification).where(
+            Notification.event_id == f"campaign-{campaign.id}-sent"
+        )
+    ).all()
+    assert len(retry_rows) == 1
+
+
+def test_campaign_send_succeeds_when_email_observer_is_not_subscribed(
+    test_session, monkeypatch, website_engine
+) -> None:
+    monkeypatch.setattr(campaigns_module, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin", email="campaign-admin-no-email@uwi.edu")
+    alumnus = _eligible_user(
+        test_session, "campaign-alum-no-email@my.uwi.edu", faculty=None, department=None
+    )
+    campaign = add_campaign(test_session, admin.id)
+
+    with isolate_publisher():
         notification_publisher.subscribe(website_notification_observer)
         result = campaigns_module.send_campaign(admin.id, campaign.id)
 

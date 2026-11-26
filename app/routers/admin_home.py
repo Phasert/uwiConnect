@@ -252,7 +252,7 @@ async def admin_send_campaign(request: Request, campaign_id: int, user: AdminDep
     if result.get("ok"):
         flash(
             request,
-            "Campaign sent. This publishes an in-app notification; no email is delivered.",
+            "Campaign notification processing completed. Eligible alumni receive website notifications; enabled email delivery is best-effort and does not confirm inbox receipt.",
             "success",
         )
     else:

@@ -22,6 +22,7 @@ from app.services.board_auth import public_user
 from app.utilities.security import encrypt_password
 
 APPROVED_UWI_DOMAINS = frozenset({"uwi.edu", "my.uwi.edu"})
+APPROVED_UWI_REGISTRATION_DOMAINS = frozenset({"my.uwi.edu"})
 
 
 def normalize_email(email: str) -> str:
@@ -38,6 +39,15 @@ def is_uwi_email(email: str) -> bool:
         return False
 
     return domain.lower() in APPROVED_UWI_DOMAINS
+
+
+def is_approved_registration_email(email: str) -> bool:
+    normalized_email = normalize_email(email)
+    if not normalized_email or normalized_email.count("@") != 1:
+        return False
+
+    local_part, domain = normalized_email.rsplit("@", 1)
+    return bool(local_part) and domain.lower() in APPROVED_UWI_REGISTRATION_DOMAINS
 
 
 def looks_like_uwi_email(email: str) -> bool:
@@ -58,7 +68,7 @@ def register(
         return {"ok": False, "error": "role must be alumni|admin"}
 
     normalized_email = normalize_email(email)
-    if not is_uwi_email(normalized_email):
+    if not is_approved_registration_email(normalized_email):
         return {
             "ok": False,
             "error": "email must use an approved UWI domain",

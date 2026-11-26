@@ -150,7 +150,7 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
     first = client.post(
         "/api/auth/register",
         json={
-            "email": "Duplicate.Student@uwi.edu",
+            "email": "Duplicate.Student@my.uwi.edu",
             "password": "first-password",
             "programme": "Computer Science",
             "faculty": "FST",
@@ -159,7 +159,7 @@ def test_duplicate_registration_is_rejected_case_insensitively() -> None:
     second = client.post(
         "/api/auth/register",
         json={
-            "email": "duplicate.student@UWI.EDU",
+            "email": "duplicate.student@MY.UWI.EDU",
             "password": "second-password",
             "programme": "Computer Science",
             "faculty": "FST",
@@ -187,7 +187,7 @@ def test_registration_sends_verification_link_that_can_be_consumed(
     response = client.post(
         "/api/auth/register",
         json={
-            "email": "scheduled.verify@uwi.edu",
+            "email": "scheduled.verify@my.uwi.edu",
             "password": "verify-password",
             "programme": "Computer Science",
             "faculty": "FST",
@@ -197,7 +197,7 @@ def test_registration_sends_verification_link_that_can_be_consumed(
     assert response.status_code == 200
     assert len(deliveries) == 1
     recipient, subject, body, kwargs = deliveries[0]
-    assert recipient == "scheduled.verify@uwi.edu"
+    assert recipient == "scheduled.verify@my.uwi.edu"
     assert subject == "Verify your UWI Connect email address"
     assert kwargs["html_body"]
     token = parse_qs(urlsplit(body.splitlines()[2]).query)["token"][0]
@@ -220,7 +220,7 @@ def test_smtp_failure_does_not_fail_registration(monkeypatch) -> None:
     response = client.post(
         "/api/auth/register",
         json={
-            "email": "mail.failure@uwi.edu",
+            "email": "mail.failure@my.uwi.edu",
             "password": "verify-password",
             "programme": "Computer Science",
             "faculty": "FST",
@@ -235,7 +235,7 @@ def test_login_accepts_different_email_capitalization() -> None:
     registered = client.post(
         "/api/auth/register",
         json={
-            "email": "Case.Login@uwi.edu",
+            "email": "Case.Login@my.uwi.edu",
             "password": "case-password",
             "programme": "Computer Science",
             "faculty": "FST",
@@ -250,7 +250,7 @@ def test_login_accepts_different_email_capitalization() -> None:
     response = client.post(
         "/api/auth/login",
         json={
-            "email": "cAsE.lOgIn@UwI.EdU",
+            "email": "cAsE.lOgIn@My.UwI.EdU",
             "password": "case-password",
         },
     )
@@ -292,6 +292,7 @@ def test_login_accepts_existing_mixed_case_account() -> None:
     "email",
     [
         "student@gmail.com",
+        "student@uwi.edu",
         "student@uwi.edu.attacker.com",
         "student@attackeruwi.edu",
     ],

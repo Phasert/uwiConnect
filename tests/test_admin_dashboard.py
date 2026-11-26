@@ -531,6 +531,20 @@ def test_campaign_draft_created_and_listed(admin_client):
     assert "Schedule" in page.text
 
 
+def test_campaign_content_is_escaped_in_admin_list(admin_client):
+    campaign = _create_campaign(
+        admin_client,
+        "<script>alert('campaign')</script>",
+        "<img src=x onerror=alert(1)>",
+    )
+
+    page = admin_client.get("/admin/campaigns").text
+
+    assert "&lt;script&gt;alert(&#39;campaign&#39;)&lt;/script&gt;" in page
+    assert "&lt;img src=x onerror=alert(1)&gt;" in page
+    assert f"/admin/campaigns/{campaign['id']}/send" in page
+
+
 def test_campaign_form_requires_title_and_message(admin_client):
     before = len(campaigns.list_campaigns())
 
@@ -563,7 +577,7 @@ def test_admin_sends_campaign(admin_client):
     row = next(row for row in campaigns.list_campaigns() if row["id"] == campaign["id"])
     assert row["status"] == "sent"
     page = admin_client.get("/admin/campaigns")
-    assert "no email is delivered" in page.text
+    assert "best-effort and does not confirm inbox receipt" in page.text
     assert "Sent" in page.text
 
 

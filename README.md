@@ -27,7 +27,7 @@ Open http://127.0.0.1:5000 — SSR auth shell; scenario JSON under `/api` and Op
 | `alumni.pending@gmail.com` | `alumni-dev` | alumni (unverified) |
 | `alumni.fakeuwi@example.com` | `alumni-dev` | alumni (unverified) |
 
-JSON login: `POST /api/auth/login` with `{"email","password"}`. Other scenario endpoints take an `X-User-Id` header (demo auth).
+JSON login: `POST /api/auth/login` with `{"email","password"}`. It sets the same HttpOnly access-token cookie used by protected API routes; client-supplied `X-User-Id` headers are not authentication.
 
 ## Gmail email delivery
 
@@ -85,6 +85,46 @@ instances; use a deployment-edge rate limiter for distributed IP protection.
 `GET /api/users` requires an authenticated administrator session.
 
 Same-origin browser clients can obtain a separate CSRF token from `GET /api/auth/csrf`; send it in `X-CSRF-Token` on state-changing fetch requests. Native SSR forms submit the same token as a hidden `csrf_token` field. The CSRF endpoint never returns the HttpOnly JWT.
+
+## Campaign delivery and scheduling
+
+Campaigns publish website notifications to eligible verified alumni. If
+`NOTIFICATION_EMAIL_ENABLED=true`, the shared SMTP observer also attempts email
+delivery. Per-recipient email preferences are not currently configurable.
+Campaign success depends on website notification delivery. Email is attempted
+independently when enabled and is best-effort: an email failure alone does not
+make the campaign unsuccessful or trigger a campaign retry, and a `sent`
+status does not prove that a message reached an inbox. Email delivery records
+successful sends, but a process failure between SMTP acceptance and recording
+success can still result in a duplicate email on recovery.
+
+Scheduled campaigns can still be created, but the Render Blueprint does not
+include a scheduler, so they will not be processed automatically on Render.
+For demonstrations, run `python manage.py process-campaigns` manually when
+scheduled campaigns need processing. Run it in an environment configured to
+use the application's database and settings. This command also processes
+recovery work for campaigns left in progress. Automatic scheduled processing
+would require a separately configured scheduler in the future.
+
+The web service's Render Environment settings must contain
+`NOTIFICATION_EMAIL_ENABLED` and all eight `SMTP_*` keys when using email
+notifications. The Blueprint marks them as dashboard-managed (`sync: false`),
+so on an existing Blueprint you must add any missing keys in the Render
+Dashboard. Do not put SMTP credentials in this file. Set notification email
+to `false` when disabled; to enable delivery, set it to `true` and provide
+valid SMTP credentials and sender settings. Manually running the campaign
+processor uses these settings for optional email delivery.
+
+## Template escaping
+
+The Jinja environment currently has autoescaping disabled. Moderation,
+revision, and deletion review templates explicitly escape submitted listing
+content, and the campaign table escapes campaign titles and bodies. Other
+templates still render user-controlled listing/form values without consistent
+escaping (including `app.html`, `landing.html`, and `alumni_dashboard.html`).
+Enabling autoescaping globally would affect all shared templates and should be
+coordinated with the dashboard, listing, and shared-layout owners before that
+broader change is made.
 
 ## Student brief
 
