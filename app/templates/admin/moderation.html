@@ -15,6 +15,37 @@
   <div class="card-body">
     <h2 id="moderationHeading" class="h5">Listing moderation</h2>
     <p class="text-body-secondary small">Approve or reject job and event submissions. Rejection reasons are shown to the submitting alumnus.</p>
+
+    <form method="get" action="{{ url_for('admin_moderation_view') }}" class="row g-2 align-items-end mb-3" aria-label="Filter pending listings">
+      <div class="col-12 col-md-4">
+        <label class="form-label small mb-1" for="moderationQ">Search title or description</label>
+        <input class="form-control form-control-sm" id="moderationQ" name="q" type="search" value="{{ filters.q | e }}" placeholder="Search listings">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="moderationKind">Type</label>
+        <select class="form-select form-select-sm" id="moderationKind" name="kind">
+          <option value=""{% if filters.kind == '' %} selected{% endif %}>All types</option>
+          <option value="job"{% if filters.kind == 'job' %} selected{% endif %}>Job</option>
+          <option value="event"{% if filters.kind == 'event' %} selected{% endif %}>Event</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="moderationSort">Sort by</label>
+        <select class="form-select form-select-sm" id="moderationSort" name="sort">
+          <option value="created_desc"{% if filters.sort == 'created_desc' %} selected{% endif %}>Newest first</option>
+          <option value="created_asc"{% if filters.sort == 'created_asc' %} selected{% endif %}>Oldest first</option>
+          <option value="title_asc"{% if filters.sort == 'title_asc' %} selected{% endif %}>Title A–Z</option>
+          <option value="title_desc"{% if filters.sort == 'title_desc' %} selected{% endif %}>Title Z–A</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-auto d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_moderation_view') }}">Reset</a>
+      </div>
+    </form>
+
+    <p class="small text-body-secondary mb-3" role="status">{{ result_count }} result{% if result_count != 1 %}s{% endif %}{% if filters.q or filters.kind %} matching current filters{% endif %}.</p>
+
     {% if pending_listings %}
     <div class="vstack gap-3">
       {% for listing in pending_listings %}
@@ -65,13 +96,13 @@
             <h4 class="h6 text-body-secondary mb-2 admin-review-actions-title">Review actions</h4>
             <div class="row g-3 align-items-end">
               <div class="col-12 col-md-auto">
-                <form method="post" action="{{ url_for('admin_publish_listing', listing_id=listing.id) }}" data-admin-action class="m-0">
+                <form method="post" action="{{ url_for('admin_publish_listing', listing_id=listing.id) }}{{ filter_query }}" data-admin-action class="m-0">
                   <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                   <button type="submit" class="btn btn-sm btn-success">Approve listing #{{ listing.id }}</button>
                 </form>
               </div>
               <div class="col-12 col-md">
-                <form method="post" action="{{ url_for('admin_reject_listing', listing_id=listing.id) }}" data-admin-action class="m-0">
+                <form method="post" action="{{ url_for('admin_reject_listing', listing_id=listing.id) }}{{ filter_query }}" data-admin-action class="m-0">
                   <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
                   <label class="form-label small mb-1" for="rejectReason{{ listing.id }}">Rejection reason for listing #{{ listing.id }}</label>
                   <textarea class="form-control form-control-sm mb-1" id="rejectReason{{ listing.id }}" name="rejection_reason" rows="2" placeholder="Explain what needs to change" aria-describedby="rejectReasonHelp{{ listing.id }}">{{ listing.rejection_reason | e if listing.rejection_reason else '' }}</textarea>
@@ -86,7 +117,13 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">No job or event listings are awaiting review.</div>
+    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">
+      {% if filters.q or filters.kind %}
+      No matching results. <a href="{{ url_for('admin_moderation_view') }}">Reset filters</a>.
+      {% else %}
+      No job or event listings are awaiting review.
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 </section>
