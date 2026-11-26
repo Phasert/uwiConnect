@@ -25,22 +25,11 @@ def _author_names(listings):
     return names
 
 
-def _deletion_requests(admin_id):
-    result = boards.list_deletion_requests(admin_id)
-    return result["listings"] if result.get("ok") else []
+PENDING_PREVIEW_LIMIT = 5
 
 
-def _revision_requests(admin_id):
-    result = boards.list_revision_requests(admin_id)
-    return result["revision_requests"] if result.get("ok") else []
-
-
-def _campaign_counts(rows):
-    return {
-        "draft": sum(1 for row in rows if row["status"] == "draft"),
-        "scheduled": sum(1 for row in rows if row["status"] == "scheduled"),
-        "sent": sum(1 for row in rows if row["status"] == "sent"),
-    }
+def _pending_preview():
+    return boards.list_pending(sort="created_desc", limit=PENDING_PREVIEW_LIMIT)
 
 
 LISTING_SORT_OPTIONS = {"created_desc", "created_asc", "title_asc", "title_desc"}
@@ -100,21 +89,21 @@ def _redirect(request, route_name, filters: dict[str, str] | None = None):
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_home_view(request: Request, user: AdminDep):
-    pending = boards.list_pending()
-    deletion_requests = _deletion_requests(user.id)
-    revision_requests = _revision_requests(user.id)
-    campaign_rows = campaigns.list_campaigns()
+    pending_preview = _pending_preview()
+    campaign_summary = campaigns.campaign_summary()
 
     return _render(
         request,
         user,
         "admin.html",
         {
-            "pending_count": len(pending),
-            "deletion_count": len(deletion_requests),
-            "revision_count": len(revision_requests),
-            "published_count": len(boards.browse_published()),
-            "campaign_counts": _campaign_counts(campaign_rows),
+            "pending_count": boards.count_pending(),
+            "deletion_count": boards.count_deletion_requests(user.id),
+            "revision_count": boards.count_revision_requests(user.id),
+            "published_count": boards.count_published(),
+            "campaign_summary": campaign_summary,
+            "pending_preview": pending_preview,
+            "pending_preview_authors": _author_names(pending_preview),
         },
     )
 

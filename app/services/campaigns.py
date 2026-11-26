@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import or_, update
+from sqlalchemy import func, or_, update
 from sqlmodel import Session, select
 
 from app.database import engine
@@ -165,6 +165,22 @@ def list_campaigns(
         stmt = stmt.order_by(*_campaign_order(sort))
         rows = session.exec(stmt).all()
         return [r.model_dump() for r in rows]
+
+
+def campaign_summary() -> dict[str, int]:
+    with Session(engine) as session:
+        rows = session.exec(
+            select(Campaign.status, func.count()).group_by(Campaign.status)
+        ).all()
+    counts = {status: int(count) for status, count in rows}
+    total = sum(counts.values())
+    return {
+        "total": total,
+        "draft": counts.get("draft", 0),
+        "scheduled": counts.get("scheduled", 0),
+        "sending": counts.get("sending", 0),
+        "sent": counts.get("sent", 0),
+    }
 
 
 def schedule_campaign(

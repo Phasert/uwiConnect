@@ -49,7 +49,7 @@
     {% if pending_listings %}
     <div class="vstack gap-3">
       {% for listing in pending_listings %}
-      <article class="border rounded admin-review-item p-3 p-md-4" aria-labelledby="submissionTitle{{ listing.id }}">
+      <article class="border rounded admin-review-item p-3 p-md-4" id="submission{{ listing.id }}" aria-labelledby="submissionTitle{{ listing.id }}">
         <details class="admin-submission" id="submissionDetails{{ listing.id }}">
           <summary class="admin-submission-summary py-1" aria-label="Review submission {{ listing.id }}: {{ listing.title | e }}">
             <span class="d-flex flex-wrap justify-content-between align-items-start gap-2">
@@ -132,4 +132,19 @@
 
 {% block subpage_scripts %}
 {{ admin_action_script() }}
+<script>
+(function () {
+  var hash = window.location.hash;
+  if (!hash || hash.indexOf('#submission') !== 0) return;
+  var article = document.querySelector(hash);
+  if (!article) return;
+  var details = article.querySelector('details.admin-submission');
+  if (details) details.open = true;
+  article.scrollIntoView({ block: 'start' });
+  var summary = article.querySelector('summary');
+  if (summary && typeof summary.focus === 'function') {
+    summary.focus({ preventScroll: true });
+  }
+})();
+</script>
 {% endblock %}

@@ -49,7 +49,7 @@ def test_bell_is_rendered_on_every_admin_page():
     authenticate(client, ADMIN_EMAIL, ADMIN_PASSWORD)
 
     pages = (
-        ("/admin", "Admin dashboard"),
+        ("/admin", "Admin overview"),
         ("/admin/moderation", 'id="moderation"'),
         ("/admin/revisions", 'id="revisions"'),
         ("/admin/deletions", 'id="deletions"'),
