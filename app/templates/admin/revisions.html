@@ -1,0 +1,105 @@
+{% extends "authenticated-base.html" %}
+{% from "partials/admin_macros.html" import admin_page_header, revision_display, admin_action_script with context %}
+{% block title %}Revision requests · Admin · UWI Connect{% endblock %}
+
+{% block external_css %}
+{{ super() }}
+<link href="{{ url_for('static', path='css/admin-dashboard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block subpage_content %}
+<div class="admin-dashboard">
+{{ admin_page_header("Revision requests", "Compare proposed changes with published listing values.") }}
+
+<section class="card admin-management-card" id="revisions" aria-labelledby="revisionsHeading">
+  <div class="card-body">
+    <h2 id="revisionsHeading" class="h5">Revision requests</h2>
+    <p class="text-body-secondary small">Approve proposed changes or deny them without changing the published listing.</p>
+    {% set revision_fields = [
+      ('kind', 'Listing type'),
+      ('title', 'Title'),
+      ('body', 'Description'),
+      ('company_name', 'Company'),
+      ('location', 'Location'),
+      ('faculty', 'Faculty'),
+      ('department', 'Department'),
+      ('application_instructions', 'How to apply'),
+      ('application_deadline', 'Application deadline'),
+      ('event_date', 'Event date'),
+      ('event_time', 'Event time'),
+      ('category', 'Category'),
+      ('registration_information', 'Registration information')
+    ] %}
+    {% if revision_requests %}
+    <div class="vstack gap-3">
+      {% for revision in revision_requests %}
+      {% set changed = namespace(count=0) %}
+      <article class="border rounded admin-review-item p-3 p-md-4" aria-labelledby="revisionTitle{{ revision.listing_id }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <h3 class="h6 mb-1 text-break" id="revisionTitle{{ revision.listing_id }}">Listing #{{ revision.listing_id }} · {{ revision.original.get('title') | e }}</h3>
+            <p class="small text-body-secondary mb-0">Requested by <span class="text-break">{{ authors.get(revision.requesting_author_id, 'Unknown author') | e }}</span> · {{ revision.requested_at | e }}</p>
+          </div>
+          <span class="badge text-bg-warning text-dark">Revision requested</span>
+        </div>
+
+        <h4 class="h6 mb-2">Changed fields</h4>
+        <div class="vstack gap-2">
+          {% for field, label in revision_fields %}
+          {% set current_raw = revision.original.get(field) %}
+          {% set proposed_raw = revision.proposed.get(field) %}
+          {% set current_value = current_raw if current_raw is not none and current_raw != '' else none %}
+          {% set proposed_value = proposed_raw if proposed_raw is not none and proposed_raw != '' else none %}
+          {% if current_value != proposed_value %}
+          {% set changed.count = changed.count + 1 %}
+          <div class="border rounded p-2 p-md-3 bg-light">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <h4 class="h6 mb-0">{{ label }}</h4>
+              {% if proposed_value is none %}
+              <span class="badge text-bg-secondary">Removed</span>
+              {% elif current_value is none %}
+              <span class="badge text-bg-info text-dark">Added</span>
+              {% else %}
+              <span class="badge text-bg-warning text-dark">Changed</span>
+              {% endif %}
+            </div>
+            <dl class="row g-2 small mb-0">
+              <dt class="col-sm-3 text-body-secondary">Current</dt>
+              <dd class="col-sm-9 mb-0">{{ revision_display(current_value) }}</dd>
+              <dt class="col-sm-3 text-body-secondary">Proposed</dt>
+              <dd class="col-sm-9 mb-0">{{ revision_display(proposed_value, true) }}</dd>
+            </dl>
+          </div>
+          {% endif %}
+          {% endfor %}
+          {% if changed.count == 0 %}
+          <p class="small text-body-secondary mb-0">No field values changed in this revision.</p>
+          {% endif %}
+        </div>
+
+        <hr class="my-3 admin-review-divider">
+
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post" action="{{ url_for('admin_approve_revision', listing_id=revision.listing_id) }}" data-admin-action class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+            <button type="submit" class="btn btn-sm btn-success">Approve revision for #{{ revision.listing_id }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_deny_revision', listing_id=revision.listing_id) }}" data-admin-action class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Deny revision for #{{ revision.listing_id }}</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">No revision requests are awaiting review.</div>
+    {% endif %}
+  </div>
+</section>
+</div>
+{% endblock %}
+
+{% block subpage_scripts %}
+{{ admin_action_script() }}
+{% endblock %}

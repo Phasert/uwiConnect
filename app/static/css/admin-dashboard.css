@@ -1,0 +1,160 @@
+.admin-dashboard {
+  text-align: left;
+}
+
+.admin-dashboard .admin-page-intro h1,
+.admin-dashboard .admin-page-header h1 {
+  margin-bottom: var(--space-2);
+}
+
+.admin-dashboard .admin-page-intro p,
+.admin-dashboard .admin-page-description {
+  max-width: 44rem;
+  margin-bottom: 0;
+}
+
+.admin-dashboard .admin-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: var(--space-3);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius);
+  background: #fff;
+  color: var(--brand-ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.admin-dashboard .admin-back-link:hover {
+  border-color: var(--brand-accent-2);
+  color: var(--brand-bg);
+  text-decoration: none;
+}
+
+.admin-dashboard .admin-back-link:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 2px;
+}
+
+.admin-dashboard .admin-overview-card {
+  --admin-card-accent: var(--brand-accent-2);
+  border-left: 4px solid var(--admin-card-accent);
+  border-radius: var(--brand-radius);
+}
+
+.admin-dashboard .admin-overview-card--moderation {
+  --admin-card-accent: var(--brand-accent-2);
+}
+
+.admin-dashboard .admin-overview-card--revisions {
+  --admin-card-accent: var(--brand-info);
+}
+
+.admin-dashboard .admin-overview-card--deletions {
+  --admin-card-accent: var(--brand-danger);
+}
+
+.admin-dashboard .admin-overview-card--campaigns {
+  --admin-card-accent: var(--brand-success);
+}
+
+.admin-dashboard .admin-card-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--brand-radius);
+  background: color-mix(in srgb, var(--admin-card-accent) 12%, #fff);
+  color: var(--brand-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard .admin-card-icon {
+  color: var(--admin-card-accent);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.admin-dashboard .admin-card-heading {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--brand-bg);
+}
+
+.admin-dashboard .admin-card-stat {
+  font-family: var(--brand-font-display);
+  font-size: clamp(1.9rem, 4vw, 2.4rem);
+  line-height: 1;
+  color: var(--brand-bg);
+}
+
+.admin-dashboard .admin-card-stat-label {
+  margin-bottom: var(--space-3);
+  color: var(--brand-muted);
+  font-size: 0.875rem;
+}
+
+.admin-dashboard .admin-card-note {
+  margin-bottom: var(--space-4);
+  color: var(--brand-muted);
+  font-size: 0.875rem;
+}
+
+.admin-dashboard .admin-card-action {
+  width: 100%;
+  margin-top: auto;
+  text-align: left;
+  white-space: normal;
+}
+
+.admin-dashboard .admin-secondary-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius);
+  background: #fff;
+}
+
+.admin-dashboard .admin-secondary-stat-label {
+  color: var(--brand-muted);
+  font-size: 0.875rem;
+}
+
+.admin-dashboard .admin-secondary-stat-value {
+  font-family: var(--brand-font-display);
+  font-size: 1.35rem;
+  color: var(--brand-bg);
+}
+
+.admin-dashboard .admin-management-card {
+  margin-bottom: var(--space-4);
+  border-color: var(--brand-border);
+  border-radius: var(--brand-radius);
+}
+
+.admin-dashboard .admin-review-item {
+  border-color: var(--brand-border);
+  border-radius: var(--brand-radius);
+}
+
+.admin-dashboard .admin-review-divider {
+  border-color: var(--brand-border);
+}
+
+.admin-dashboard .admin-review-actions-title {
+  color: var(--brand-muted);
+}
+
+.admin-dashboard .admin-empty-state {
+  border-color: var(--brand-border);
+  color: var(--brand-muted);
+}

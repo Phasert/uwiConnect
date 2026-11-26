@@ -23,6 +23,16 @@ def _author_names(listings):
     return names
 
 
+def _deletion_requests(admin_id):
+    result = boards.list_deletion_requests(admin_id)
+    return result["listings"] if result.get("ok") else []
+
+
+def _revision_requests(admin_id):
+    result = boards.list_revision_requests(admin_id)
+    return result["revision_requests"] if result.get("ok") else []
+
+
 def _campaign_counts(rows):
     return {
         "draft": sum(1 for row in rows if row["status"] == "draft"),
@@ -31,46 +41,95 @@ def _campaign_counts(rows):
     }
 
 
-def _dashboard_response(request, user):
-    pending = boards.list_pending()
-    deletion_result = boards.list_deletion_requests(user.id)
-    deletion_requests = deletion_result["listings"] if deletion_result.get("ok") else []
-    revision_result = boards.list_revision_requests(user.id)
-    revision_requests = (
-        revision_result["revision_requests"] if revision_result.get("ok") else []
-    )
-    campaign_rows = campaigns.list_campaigns()
-
+def _render(request, user, template_name, context=None):
     return templates.TemplateResponse(
         request=request,
-        name="admin.html",
-        context={
-            "user": user,
-            "pending_listings": pending,
-            "deletion_requests": deletion_requests,
-            "revision_requests": revision_requests,
-            "campaigns": campaign_rows,
-            "authors": _author_names(
-                pending + deletion_requests + [item["original"] for item in revision_requests]
-            ),
-            "pending_count": len(pending),
-            "deletion_count": len(deletion_requests),
-            "published_count": len(boards.browse_published()),
-            "campaign_counts": _campaign_counts(campaign_rows),
-        },
+        name=template_name,
+        context={"user": user, **(context or {})},
     )
 
 
-def _redirect(request):
+def _redirect(request, route_name):
     return RedirectResponse(
-        url=request.url_for("admin_home_view"),
+        url=request.url_for(route_name),
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_home_view(request: Request, user: AdminDep):
-    return _dashboard_response(request, user)
+    pending = boards.list_pending()
+    deletion_requests = _deletion_requests(user.id)
+    revision_requests = _revision_requests(user.id)
+    campaign_rows = campaigns.list_campaigns()
+
+    return _render(
+        request,
+        user,
+        "admin.html",
+        {
+            "pending_count": len(pending),
+            "deletion_count": len(deletion_requests),
+            "revision_count": len(revision_requests),
+            "published_count": len(boards.browse_published()),
+            "campaign_counts": _campaign_counts(campaign_rows),
+        },
+    )
+
+
+@router.get("/admin/moderation", response_class=HTMLResponse)
+async def admin_moderation_view(request: Request, user: AdminDep):
+    pending = boards.list_pending()
+
+    return _render(
+        request,
+        user,
+        "admin/moderation.html",
+        {
+            "pending_listings": pending,
+            "authors": _author_names(pending),
+        },
+    )
+
+
+@router.get("/admin/revisions", response_class=HTMLResponse)
+async def admin_revisions_view(request: Request, user: AdminDep):
+    revision_requests = _revision_requests(user.id)
+
+    return _render(
+        request,
+        user,
+        "admin/revisions.html",
+        {
+            "revision_requests": revision_requests,
+            "authors": _author_names([item["original"] for item in revision_requests]),
+        },
+    )
+
+
+@router.get("/admin/deletions", response_class=HTMLResponse)
+async def admin_deletions_view(request: Request, user: AdminDep):
+    deletion_requests = _deletion_requests(user.id)
+
+    return _render(
+        request,
+        user,
+        "admin/deletions.html",
+        {
+            "deletion_requests": deletion_requests,
+            "authors": _author_names(deletion_requests),
+        },
+    )
+
+
+@router.get("/admin/campaigns", response_class=HTMLResponse)
+async def admin_campaigns_view(request: Request, user: AdminDep):
+    return _render(
+        request,
+        user,
+        "admin/campaigns.html",
+        {"campaigns": campaigns.list_campaigns()},
+    )
 
 
 @router.post("/admin/listings/{listing_id}/publish")
@@ -84,7 +143,7 @@ async def admin_publish_listing(request: Request, listing_id: int, user: AdminDe
             result.get("error", "The listing could not be approved."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_moderation_view")
 
 
 @router.post("/admin/listings/{listing_id}/reject")
@@ -105,7 +164,7 @@ async def admin_reject_listing(
             result.get("error", "The listing could not be rejected."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_moderation_view")
 
 
 @router.post("/admin/listings/{listing_id}/deletion-request/approve")
@@ -119,7 +178,7 @@ async def admin_approve_deletion(request: Request, listing_id: int, user: AdminD
             result.get("error", "The deletion could not be approved."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_deletions_view")
 
 
 @router.post("/admin/listings/{listing_id}/deletion-request/deny")
@@ -133,7 +192,7 @@ async def admin_deny_deletion(request: Request, listing_id: int, user: AdminDep)
             result.get("error", "The request could not be denied."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_deletions_view")
 
 
 @router.post("/admin/listings/{listing_id}/revision-request/approve")
@@ -147,7 +206,7 @@ async def admin_approve_revision(request: Request, listing_id: int, user: AdminD
             result.get("error", "The revision could not be approved."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_revisions_view")
 
 
 @router.post("/admin/listings/{listing_id}/revision-request/deny")
@@ -161,7 +220,7 @@ async def admin_deny_revision(request: Request, listing_id: int, user: AdminDep)
             result.get("error", "The revision request could not be denied."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_revisions_view")
 
 
 @router.post("/admin/campaigns")
@@ -173,7 +232,7 @@ async def admin_create_campaign(
 ):
     if not subject.strip() or not body.strip():
         flash(request, "Campaign title and message are required.", "danger")
-        return _redirect(request)
+        return _redirect(request, "admin_campaigns_view")
 
     result = campaigns.create_draft(user.id, subject=subject, body=body)
     if result.get("ok"):
@@ -184,7 +243,7 @@ async def admin_create_campaign(
             result.get("error", "The campaign could not be created."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_campaigns_view")
 
 
 @router.post("/admin/campaigns/{campaign_id}/send")
@@ -202,7 +261,7 @@ async def admin_send_campaign(request: Request, campaign_id: int, user: AdminDep
             result.get("error", "The campaign could not be sent."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_campaigns_view")
 
 
 @router.post("/admin/campaigns/{campaign_id}/schedule")
@@ -224,4 +283,4 @@ async def admin_schedule_campaign(
             result.get("error", "The campaign could not be scheduled."),
             "danger",
         )
-    return _redirect(request)
+    return _redirect(request, "admin_campaigns_view")

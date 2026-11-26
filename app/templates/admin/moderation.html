@@ -1,0 +1,85 @@
+{% extends "authenticated-base.html" %}
+{% from "partials/admin_macros.html" import admin_page_header, listing_kind_label, moderation_detail, admin_action_script with context %}
+{% block title %}Listing moderation · Admin · UWI Connect{% endblock %}
+
+{% block external_css %}
+{{ super() }}
+<link href="{{ url_for('static', path='css/admin-dashboard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block subpage_content %}
+<div class="admin-dashboard">
+{{ admin_page_header("Listing moderation", "Review pending job and event submissions.") }}
+
+<section class="card admin-management-card" id="moderation" aria-labelledby="moderationHeading">
+  <div class="card-body">
+    <h2 id="moderationHeading" class="h5">Listing moderation</h2>
+    <p class="text-body-secondary small">Approve or reject job and event submissions. Rejection reasons are shown to the submitting alumnus.</p>
+    {% if pending_listings %}
+    <div class="vstack gap-3">
+      {% for listing in pending_listings %}
+      <article class="border rounded admin-review-item p-3 p-md-4" aria-labelledby="submissionTitle{{ listing.id }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <h3 class="h6 mb-1 text-break" id="submissionTitle{{ listing.id }}">{{ listing.title | e }}</h3>
+            <p class="small text-body-secondary mb-0">Listing #{{ listing.id }} · Submitted by <span class="text-break">{{ authors.get(listing.author_id, 'Unknown author') | e }}</span></p>
+          </div>
+          <span class="badge text-bg-secondary">{{ listing_kind_label(listing.kind) }}</span>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12 col-lg-7">
+            <h4 class="h6 text-body-secondary mb-1">Description</h4>
+            <p class="small mb-0 text-break">{{ listing.body | e }}</p>
+          </div>
+          <div class="col-12 col-lg-5">
+            <h4 class="h6 text-body-secondary mb-1">Listing details</h4>
+            <dl class="row g-2 small mb-0">
+              {{ moderation_detail('Company', listing.company_name) }}
+              {{ moderation_detail('Location', listing.location) }}
+              {{ moderation_detail('Category', listing.category) }}
+              {{ moderation_detail('Faculty', listing.faculty) }}
+              {{ moderation_detail('Department', listing.department) }}
+              {{ moderation_detail('Application deadline', listing.application_deadline) }}
+              {{ moderation_detail('How to apply', listing.application_instructions) }}
+              {{ moderation_detail('Event date', listing.event_date) }}
+              {{ moderation_detail('Event time', listing.event_time) }}
+              {{ moderation_detail('Registration', listing.registration_information) }}
+            </dl>
+          </div>
+        </div>
+
+        <hr class="my-3 admin-review-divider">
+
+        <h4 class="h6 text-body-secondary mb-2 admin-review-actions-title">Review actions</h4>
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-auto">
+            <form method="post" action="{{ url_for('admin_publish_listing', listing_id=listing.id) }}" data-admin-action class="m-0">
+              <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+              <button type="submit" class="btn btn-sm btn-success">Approve listing #{{ listing.id }}</button>
+            </form>
+          </div>
+          <div class="col-12 col-md">
+            <form method="post" action="{{ url_for('admin_reject_listing', listing_id=listing.id) }}" data-admin-action class="m-0">
+              <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+              <label class="form-label small mb-1" for="rejectReason{{ listing.id }}">Rejection reason for listing #{{ listing.id }}</label>
+              <textarea class="form-control form-control-sm mb-1" id="rejectReason{{ listing.id }}" name="rejection_reason" rows="2" placeholder="Explain what needs to change" aria-describedby="rejectReasonHelp{{ listing.id }}">{{ listing.rejection_reason | e if listing.rejection_reason else '' }}</textarea>
+              <div id="rejectReasonHelp{{ listing.id }}" class="form-text mt-0">Optional. Tell the author what to change before resubmitting.</div>
+              <button type="submit" class="btn btn-sm btn-outline-danger mt-2">Reject listing #{{ listing.id }}</button>
+            </form>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">No job or event listings are awaiting review.</div>
+    {% endif %}
+  </div>
+</section>
+</div>
+{% endblock %}
+
+{% block subpage_scripts %}
+{{ admin_action_script() }}
+{% endblock %}

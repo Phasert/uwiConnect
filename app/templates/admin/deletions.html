@@ -1,0 +1,64 @@
+{% extends "authenticated-base.html" %}
+{% from "partials/admin_macros.html" import admin_page_header, listing_kind_label, admin_action_script with context %}
+{% block title %}Deletion requests · Admin · UWI Connect{% endblock %}
+
+{% block external_css %}
+{{ super() }}
+<link href="{{ url_for('static', path='css/admin-dashboard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block subpage_content %}
+<div class="admin-dashboard">
+{{ admin_page_header("Deletion requests", "Review requests to permanently remove listings.") }}
+
+<section class="card admin-management-card" id="deletions" aria-labelledby="deletionHeading">
+  <div class="card-body">
+    <h2 id="deletionHeading" class="h5">Deletion requests</h2>
+    <p class="text-body-secondary small">Approving a request permanently deletes the listing. This cannot be undone.</p>
+    {% if deletion_requests %}
+    <div class="vstack gap-3">
+      {% for listing in deletion_requests %}
+      <article class="border rounded admin-review-item p-3 p-md-4" aria-labelledby="deletionTitle{{ listing.id }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <h3 class="h6 mb-1 text-break" id="deletionTitle{{ listing.id }}">Listing #{{ listing.id }} · {{ listing.title | e }}</h3>
+            <p class="small text-body-secondary mb-0">Requested by <span class="text-break">{{ authors.get(listing.author_id, 'Unknown author') | e }}</span></p>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge text-bg-secondary">{{ listing_kind_label(listing.kind) }}</span>
+            {% if listing.status == 'published' %}
+            <span class="badge text-bg-success">Published</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ listing.status | capitalize | e }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="alert alert-warning py-2 px-3 small mb-3" role="note">
+          <strong>Approving deletion permanently removes listing #{{ listing.id }} and its details. This cannot be undone.</strong>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post" action="{{ url_for('admin_approve_deletion', listing_id=listing.id) }}" data-admin-action data-confirm-delete="true" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+            <button type="submit" class="btn btn-sm btn-danger">Approve deletion of #{{ listing.id }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_deny_deletion', listing_id=listing.id) }}" data-admin-action class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Deny request for #{{ listing.id }}</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info admin-empty-state py-2 px-3 mb-0" role="status">No deletion requests are awaiting review.</div>
+    {% endif %}
+  </div>
+</section>
+</div>
+{% endblock %}
+
+{% block subpage_scripts %}
+{{ admin_action_script(confirm_delete=true) }}
+{% endblock %}

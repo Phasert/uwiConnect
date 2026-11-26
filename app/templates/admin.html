@@ -1,325 +1,86 @@
 {% extends "authenticated-base.html" %}
 {% block title %}Admin · UWI Connect{% endblock %}
 
-{% block subpage_content %}
-<h1>Admin dashboard</h1>
-<p>Review submissions, deletion requests and campaigns using your administrator session.</p>
-
-<nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Admin sections">
-  <a class="btn btn-sm btn-outline-primary" href="#moderation">Listing moderation</a>
-  <a class="btn btn-sm btn-outline-primary" href="#deletions">Deletion requests</a>
-  <a class="btn btn-sm btn-outline-primary" href="#revisions">Revision requests</a>
-  <a class="btn btn-sm btn-outline-primary" href="#campaigns">Campaigns</a>
-</nav>
-
-<section class="mb-4" aria-labelledby="overviewHeading">
-  <h2 id="overviewHeading" class="h5">Overview</h2>
-  <div class="row g-3">
-    <div class="col-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="text-body-secondary small">Awaiting review</div>
-          <div class="fs-3 fw-semibold">{{ pending_count }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="text-body-secondary small">Deletion requests</div>
-          <div class="fs-3 fw-semibold">{{ deletion_count }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="text-body-secondary small">Published listings</div>
-          <div class="fs-3 fw-semibold">{{ published_count }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="text-body-secondary small">Campaigns sent</div>
-          <div class="fs-3 fw-semibold">{{ campaign_counts.sent }}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="card mb-4" id="moderation" aria-labelledby="moderationHeading">
-  <div class="card-body">
-    <h2 id="moderationHeading" class="h5">Listing moderation</h2>
-    <p class="text-body-secondary small">Approve or reject job and event submissions. Rejection reasons are shown to the submitting alumnus.</p>
-    {% if pending_listings %}
-    <div class="table-responsive">
-      <table class="table table-striped align-middle">
-        <thead>
-          <tr>
-            <th scope="col">Type</th>
-            <th scope="col">Title</th>
-            <th scope="col">Submitted by</th>
-            <th scope="col">Description</th>
-            <th scope="col">Details</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for listing in pending_listings %}
-          <tr>
-            <td><span class="badge bg-secondary">{{ listing.kind | capitalize }}</span></td>
-            <td>{{ listing.title }}</td>
-            <td>{{ authors.get(listing.author_id, 'Unknown author') }}</td>
-            <td>{{ listing.body }}</td>
-            <td>
-              <ul class="list-unstyled small mb-0">
-                {% if listing.company_name %}<li><strong>Company:</strong> {{ listing.company_name }}</li>{% endif %}
-                {% if listing.location %}<li><strong>Location:</strong> {{ listing.location }}</li>{% endif %}
-                {% if listing.category %}<li><strong>Category:</strong> {{ listing.category }}</li>{% endif %}
-                {% if listing.kind == 'job' %}
-                  {% if listing.faculty %}<li><strong>Faculty:</strong> {{ listing.faculty }}</li>{% endif %}
-                  {% if listing.department %}<li><strong>Department:</strong> {{ listing.department }}</li>{% endif %}
-                  {% if listing.application_deadline %}<li><strong>Application deadline:</strong> {{ listing.application_deadline }}</li>{% endif %}
-                  {% if listing.application_instructions %}<li><strong>How to apply:</strong> {{ listing.application_instructions }}</li>{% endif %}
-                {% else %}
-                  {% if listing.event_date %}<li><strong>Event date:</strong> {{ listing.event_date }}</li>{% endif %}
-                  {% if listing.event_time %}<li><strong>Event time:</strong> {{ listing.event_time }}</li>{% endif %}
-                  {% if listing.registration_information %}<li><strong>Registration:</strong> {{ listing.registration_information }}</li>{% endif %}
-                {% endif %}
-              </ul>
-            </td>
-            <td>
-              <form method="post" action="{{ url_for('admin_publish_listing', listing_id=listing.id) }}" data-admin-action class="mb-2">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-success">Approve</button>
-              </form>
-              <form method="post" action="{{ url_for('admin_reject_listing', listing_id=listing.id) }}" data-admin-action>
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <label class="form-label small" for="rejectReason{{ listing.id }}">Rejection reason</label>
-                <textarea class="form-control form-control-sm mb-1" id="rejectReason{{ listing.id }}" name="rejection_reason" rows="2" placeholder="Explain what needs to change"></textarea>
-                <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="alert alert-info mb-0" role="status">No job or event listings are awaiting review.</div>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card mb-4" id="deletions" aria-labelledby="deletionHeading">
-  <div class="card-body">
-    <h2 id="deletionHeading" class="h5">Deletion requests</h2>
-    <p class="text-body-secondary small">Approving a request permanently deletes the listing. This cannot be undone.</p>
-    {% if deletion_requests %}
-    <div class="table-responsive">
-      <table class="table table-striped align-middle">
-        <thead>
-          <tr>
-            <th scope="col">ID</th>
-            <th scope="col">Listing</th>
-            <th scope="col">Type</th>
-            <th scope="col">Author</th>
-            <th scope="col">Publication status</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for listing in deletion_requests %}
-          <tr>
-            <td>#{{ listing.id }}</td>
-            <td>{{ listing.title }}</td>
-            <td>{{ listing.kind | capitalize }}</td>
-            <td>{{ authors.get(listing.author_id, 'Unknown author') }}</td>
-            <td>
-              {% if listing.status == 'published' %}
-              <span class="badge bg-success">Published</span>
-              {% else %}
-              <span class="badge bg-secondary">{{ listing.status | capitalize }}</span>
-              {% endif %}
-            </td>
-            <td>
-              <form method="post" action="{{ url_for('admin_approve_deletion', listing_id=listing.id) }}" data-admin-action data-confirm-delete="true" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-danger">Approve deletion</button>
-              </form>
-              <form method="post" action="{{ url_for('admin_deny_deletion', listing_id=listing.id) }}" data-admin-action class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Deny request</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="alert alert-info mb-0" role="status">No deletion requests are awaiting review.</div>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card mb-4" id="campaigns" aria-labelledby="campaignHeading">
-  <div class="card-body">
-    <h2 id="campaignHeading" class="h5">Campaign management</h2>
-    <p class="text-body-secondary small">Sending a campaign publishes an in-app Observer notification. This demo does not deliver email.</p>
-
-    <form method="post" action="{{ url_for('admin_create_campaign') }}" data-admin-action class="row g-3 mb-4">
-      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-      <div class="col-12 col-md-6">
-        <label class="form-label" for="campaignSubject">Campaign title</label>
-        <input class="form-control" id="campaignSubject" name="subject" required />
-      </div>
-      <div class="col-12">
-        <label class="form-label" for="campaignBody">Message</label>
-        <textarea class="form-control" id="campaignBody" name="body" rows="3" required></textarea>
-      </div>
-      <div class="col-12">
-        <button type="submit" class="btn btn-primary">Create draft</button>
-      </div>
-    </form>
-
-    {% if campaigns %}
-    <div class="table-responsive">
-      <table class="table table-striped align-middle">
-        <thead>
-          <tr>
-            <th scope="col">ID</th>
-            <th scope="col">Title</th>
-            <th scope="col">Message</th>
-            <th scope="col">Status</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for campaign in campaigns %}
-          <tr>
-            <td>#{{ campaign.id }}</td>
-            <td>{{ campaign.subject }}</td>
-            <td class="small">{{ campaign.body }}</td>
-            <td>
-              {% if campaign.status == 'draft' %}
-              <span class="badge bg-secondary">Draft</span>
-              {% elif campaign.status == 'scheduled' %}
-              <span class="badge bg-info text-dark">Scheduled</span>
-              {% elif campaign.status == 'sending' %}
-              <span class="badge bg-warning text-dark">Sending</span>
-              {% elif campaign.status == 'sent' %}
-              <span class="badge bg-success">Sent</span>
-              {% else %}
-              <span class="badge bg-light text-dark">{{ campaign.status | capitalize }}</span>
-              {% endif %}
-              {% if campaign.scheduled_at %}<div class="small text-body-secondary">{{ campaign.scheduled_at }}</div>{% endif %}
-              {% if campaign.sent_at %}<div class="small text-body-secondary">{{ campaign.sent_at }}</div>{% endif %}
-            </td>
-            <td>
-              {% if campaign.status == 'draft' %}
-              <form method="post" action="{{ url_for('admin_send_campaign', campaign_id=campaign.id) }}" data-admin-action class="mb-2">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-success">Send now</button>
-              </form>
-              <form method="post" action="{{ url_for('admin_schedule_campaign', campaign_id=campaign.id) }}" data-admin-action data-schedule-form>
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <label class="form-label small" for="scheduleAt{{ campaign.id }}">Schedule for</label>
-                <input class="form-control form-control-sm mb-1" type="datetime-local" id="scheduleAt{{ campaign.id }}" data-schedule-input />
-                <input type="hidden" name="scheduled_at" />
-                <button type="submit" class="btn btn-sm btn-outline-primary">Schedule</button>
-              </form>
-              {% else %}
-              <span class="text-body-secondary small">No actions available</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="alert alert-info mb-0" role="status">No campaigns have been created yet.</div>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card mb-4" id="revisions" aria-labelledby="revisionsHeading">
-  <div class="card-body">
-    <h2 id="revisionsHeading" class="h5">Revision requests</h2>
-    <p class="text-body-secondary small">Approve proposed changes or deny them without changing the published listing.</p>
-    {% if revision_requests %}
-    <div class="table-responsive">
-      <table class="table table-striped align-middle">
-        <thead>
-          <tr>
-            <th scope="col">Listing</th>
-            <th scope="col">Requested by</th>
-            <th scope="col">Proposed title</th>
-            <th scope="col">Proposed description</th>
-            <th scope="col">Requested at</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for revision in revision_requests %}
-          <tr>
-            <td>#{{ revision.listing_id }}<div class="small text-body-secondary">{{ revision.original.title }}</div></td>
-            <td>{{ authors.get(revision.requesting_author_id, 'Unknown author') }}</td>
-            <td>{{ revision.proposed.title }}</td>
-            <td class="small">{{ revision.proposed.body }}</td>
-            <td class="small">{{ revision.requested_at }}</td>
-            <td>
-              <form method="post" action="{{ url_for('admin_approve_revision', listing_id=revision.listing_id) }}" data-admin-action class="d-inline mb-1">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-success">Approve revision</button>
-              </form>
-              <form method="post" action="{{ url_for('admin_deny_revision', listing_id=revision.listing_id) }}" data-admin-action class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Deny revision</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="alert alert-info mb-0" role="status">No revision requests are awaiting review.</div>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card mb-4" aria-labelledby="usersHeading">
-  <div class="card-body">
-    <h2 id="usersHeading" class="h5">User management</h2>
-    <p class="text-body-secondary mb-0">Account warnings and revocation will appear when the account-management API is available. No actions are available yet.</p>
-  </div>
-</section>
+{% block external_css %}
+{{ super() }}
+<link href="{{ url_for('static', path='css/admin-dashboard.css') }}" rel="stylesheet">
 {% endblock %}
 
-{% block subpage_scripts %}
-<script>
-document.querySelectorAll('form[data-admin-action]').forEach(function (form) {
-  form.addEventListener('submit', function (event) {
-    if (form.dataset.confirmDelete === 'true' && !window.confirm('Permanently delete this listing? This cannot be undone.')) {
-      event.preventDefault();
-      return;
-    }
-    const scheduleInput = form.querySelector('input[data-schedule-input]');
-    const scheduledAt = form.querySelector('input[name="scheduled_at"]');
-    if (scheduleInput && scheduledAt && scheduleInput.value) {
-      scheduledAt.value = new Date(scheduleInput.value).toISOString();
-    }
-    const button = form.querySelector('button[type="submit"]');
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Working...';
-    }
-  });
-});
-</script>
+{% block subpage_content %}
+<div class="admin-dashboard">
+  <div class="admin-page-intro mb-4">
+    <h1>Admin dashboard</h1>
+    <p>Review and manage submissions, revisions, deletions and campaigns.</p>
+  </div>
+
+  <section aria-labelledby="overviewHeading">
+    <h2 id="overviewHeading" class="h5 mb-3">Overview</h2>
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <article class="card admin-overview-card admin-overview-card--moderation h-100">
+          <div class="card-body d-flex flex-column p-3 p-md-4">
+            <div class="admin-card-kicker">
+              <span class="admin-card-icon" aria-hidden="true">◆</span>
+              Listing management
+            </div>
+            <h3 class="h5 admin-card-heading">Listing moderation</h3>
+            <div class="admin-card-stat">{{ pending_count }}</div>
+            <p class="admin-card-stat-label">Pending job and event submissions</p>
+            <p class="admin-card-note">Approve or reject submissions and capture optional rejection reasons.</p>
+            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_moderation_view') }}">Review listings</a>
+          </div>
+        </article>
+      </div>
+      <div class="col-12 col-md-6">
+        <article class="card admin-overview-card admin-overview-card--revisions h-100">
+          <div class="card-body d-flex flex-column p-3 p-md-4">
+            <div class="admin-card-kicker">
+              <span class="admin-card-icon" aria-hidden="true">↻</span>
+              Revision review
+            </div>
+            <h3 class="h5 admin-card-heading">Revision requests</h3>
+            <div class="admin-card-stat">{{ revision_count }}</div>
+            <p class="admin-card-stat-label">Revision requests awaiting review</p>
+            <p class="admin-card-note">Compare current and proposed field values before deciding.</p>
+            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_revisions_view') }}">Review revisions</a>
+          </div>
+        </article>
+      </div>
+      <div class="col-12 col-md-6">
+        <article class="card admin-overview-card admin-overview-card--deletions h-100">
+          <div class="card-body d-flex flex-column p-3 p-md-4">
+            <div class="admin-card-kicker">
+              <span class="admin-card-icon" aria-hidden="true">⌫</span>
+              Deletion review
+            </div>
+            <h3 class="h5 admin-card-heading">Deletion requests</h3>
+            <div class="admin-card-stat">{{ deletion_count }}</div>
+            <p class="admin-card-stat-label">Deletion requests awaiting decision</p>
+            <p class="admin-card-note">Confirm permanent removal or deny the request safely.</p>
+            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_deletions_view') }}">Review deletions</a>
+          </div>
+        </article>
+      </div>
+      <div class="col-12 col-md-6">
+        <article class="card admin-overview-card admin-overview-card--campaigns h-100">
+          <div class="card-body d-flex flex-column p-3 p-md-4">
+            <div class="admin-card-kicker">
+              <span class="admin-card-icon" aria-hidden="true">✦</span>
+              Campaign management
+            </div>
+            <h3 class="h5 admin-card-heading">Campaigns</h3>
+            <div class="admin-card-stat">{{ campaign_counts.sent }}</div>
+            <p class="admin-card-stat-label">Campaigns sent</p>
+            <p class="admin-card-note">{{ campaign_counts.draft }} draft · {{ campaign_counts.scheduled }} scheduled · create drafts, send updates and schedule delivery.</p>
+            <a class="btn btn-sm btn-outline-primary admin-card-action" href="{{ url_for('admin_campaigns_view') }}">Manage campaigns</a>
+          </div>
+        </article>
+      </div>
+    </div>
+    <div class="admin-secondary-stat">
+      <span class="admin-secondary-stat-label">Published listings</span>
+      <span class="admin-secondary-stat-value">{{ published_count }}</span>
+    </div>
+  </section>
+</div>
 {% endblock %}
