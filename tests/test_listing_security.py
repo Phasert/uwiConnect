@@ -194,11 +194,8 @@ def test_admin_routes_use_authenticated_role_and_csrf():
     ).status_code == 200
 
 
-def test_public_browse_remains_read_only_and_available_without_login():
+def test_anonymous_browse_is_denied():
     client.cookies.clear()
     client.headers.pop("X-CSRF-Token", None)
 
-    response = client.get("/api/boards")
-
-    assert response.status_code == 200
-    assert isinstance(response.json()["listings"], list)
+    assert client.get("/api/boards").status_code == 401

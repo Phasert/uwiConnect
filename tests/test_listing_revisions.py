@@ -9,7 +9,7 @@ from app.models.user import User
 from app.seed import seed
 from app.services import boards
 from app.services.observer import notification_publisher
-from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_auth_helpers import auth_headers, browse_as_verified, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -78,7 +78,7 @@ def test_author_requests_revision_without_changing_public_listing():
     }
 
     response = _revision(author["id"], listing["id"], payload)
-    public = {row["id"]: row for row in client.get("/api/boards").json()["listings"]}
+    public = {row["id"]: row for row in browse_as_verified(client)}
     _login("alumni.verified@my.uwi.edu")
     public_page = client.get("/app", params={"q": "Original Job"})
     own = {row["id"]: row for row in boards.list_by_author(author["id"])}
@@ -119,7 +119,7 @@ def test_admin_approval_applies_revision_and_keeps_listing_published():
     assert _revision(author["id"], listing["id"], payload).status_code == 200
 
     response = _decision(admin["id"], listing["id"], "approve")
-    public = {row["id"]: row for row in client.get("/api/boards").json()["listings"]}
+    public = {row["id"]: row for row in browse_as_verified(client)}
     own = {row["id"]: row for row in boards.list_by_author(author["id"])}
 
     assert response.status_code == 200
@@ -139,7 +139,7 @@ def test_admin_denial_preserves_original_values():
     assert _revision(author["id"], listing["id"], payload).status_code == 200
 
     response = _decision(admin["id"], listing["id"], "deny")
-    public = {row["id"]: row for row in client.get("/api/boards").json()["listings"]}
+    public = {row["id"]: row for row in browse_as_verified(client)}
 
     assert response.status_code == 200
     assert response.json() == {

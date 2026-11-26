@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
-from tests.listing_auth_helpers import auth_headers, login
+from tests.listing_auth_helpers import auth_headers, browse_as_verified, login
 from tests.listing_test_helpers import complete_listing_payload
 
 
@@ -53,7 +53,7 @@ def _pending_ids(admin_id: int) -> list:
 
 
 def _public_ids(url: str) -> list:
-    return [row["id"] for row in client.get(url).json()["listings"]]
+    return [row["id"] for row in browse_as_verified(client, url)]
 
 
 def test_alumni_cannot_approve_or_reject():
