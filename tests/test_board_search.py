@@ -1,3 +1,5 @@
+import re
+
 from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
 
@@ -229,11 +231,13 @@ def test_browse_boards_link_uses_server_rendered_page():
     page = client.get("/app")
 
     assert page.status_code == 200
-    assert (
-        'class="secondary" href="http://testserver/app">Browse boards</a>'
-        in page.text
+    assert "<title>Browse boards · UWI Connect</title>" in page.text
+    assert re.search(
+        r'<a class="app-nav-link is-active" href="[^"]*/app">Browse boards</a>',
+        page.text,
     )
-    assert 'href="/api/boards">Browse boards</a>' not in page.text
+    assert page.text.count(">Browse boards</a>") == 1
+    assert re.search(r'href="[^"]*/app/dashboard">My submissions</a>', page.text)
 
 
 def test_app_renders_cards_and_preserves_search_filters():

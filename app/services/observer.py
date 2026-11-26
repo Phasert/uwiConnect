@@ -14,6 +14,12 @@ NotificationEventType = Literal["listing.published", "campaign.sent"]
 
 
 @dataclass(frozen=True)
+class NotificationRecipient:
+    user_id: int
+    email: str
+
+
+@dataclass(frozen=True)
 class NotificationEvent:
     event_type: NotificationEventType
     listing_id: int | None = None
@@ -21,6 +27,7 @@ class NotificationEvent:
     message: str = ""
     event_id: str = field(default_factory=lambda: str(uuid4()))
     kind: str | None = None
+    recipients: tuple[NotificationRecipient, ...] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.event_type == LISTING_PUBLISHED:
@@ -33,6 +40,11 @@ class NotificationEvent:
                 raise ValueError("campaign.sent requires campaign_id and no listing_id")
         else:
             raise ValueError(f"unsupported event type: {self.event_type!r}")
+
+    def require_campaign_recipients(self) -> tuple[NotificationRecipient, ...]:
+        if self.event_type != CAMPAIGN_SENT or self.recipients is None:
+            raise ValueError("campaign event requires resolved recipients")
+        return self.recipients
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {

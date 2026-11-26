@@ -43,6 +43,7 @@ from app.services.observer import (
     LISTING_PUBLISHED,
     NotificationEvent,
     NotificationPublisher,
+    NotificationRecipient,
     notification_publisher,
 )
 from app.services.recipient_selection import email_recipient_selector
@@ -186,12 +187,19 @@ def _listing_event(
     )
 
 
-def _campaign_event(event_id: str = "campaign-email-1") -> NotificationEvent:
+def _campaign_event(
+    event_id: str = "campaign-email-1",
+    recipients: tuple[NotificationRecipient, ...] = (
+        NotificationRecipient(1, "one@my.uwi.edu"),
+        NotificationRecipient(2, "two@uwi.edu"),
+    ),
+) -> NotificationEvent:
     return NotificationEvent(
         CAMPAIGN_SENT,
         campaign_id=3,
         message="Campaign announcement",
         event_id=event_id,
+        recipients=recipients,
     )
 
 
@@ -228,7 +236,7 @@ def test_observer_sends_to_explicit_recipients_and_tracks_success_separately(
     assert test_session.exec(select(Notification)).all() == []
 
 
-def test_campaign_event_sends_to_all_injected_recipients(
+def test_campaign_event_sends_to_all_resolved_recipients(
     test_session, delivery_store
 ) -> None:
     sender = FakeSender()
@@ -412,14 +420,17 @@ def test_website_delivery_survives_email_observer_failure(
     test_session.refresh(user)
 
     email_observer = EmailNotificationObserver(
-        sender=FakeSender(failures=["bad@my.uwi.edu"]),
-        recipient_selector=_recipients("bad@my.uwi.edu"),
+        sender=FakeSender(failures=[user.email]),
+        recipient_selector=_recipients("ignored@my.uwi.edu"),
         delivery_store=delivery_store,
     )
     publisher = NotificationPublisher()
     publisher.subscribe(email_observer)
     publisher.subscribe(website_notification_observer)
-    event = _campaign_event("website-survives-email-failure")
+    event = _campaign_event(
+        "website-survives-email-failure",
+        (NotificationRecipient(user.id, user.email),),
+    )
 
     result = publisher.notify_with_result(event)
 
@@ -557,6 +568,54 @@ def test_campaign_send_success_depends_on_website_delivery(
         )
     ).all()
     assert len(retry_rows) == 1
+
+
+def test_campaign_observers_share_one_resolved_target_set(
+    test_session, monkeypatch, website_engine, delivery_store
+) -> None:
+    monkeypatch.setattr(campaigns_module, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin", email="shared-admin@uwi.edu")
+    eligible = _eligible_user(test_session, "shared@my.uwi.edu", faculty="Science")
+    _eligible_user(test_session, "other@my.uwi.edu", faculty="Other")
+    campaign = add_campaign(test_session, admin.id)
+    campaign.audience_type = "faculty"
+    campaign.audience_value = "science"
+    test_session.add(campaign)
+    test_session.commit()
+    sender = FakeSender()
+    selected = []
+    original_select = campaigns_module.select_recipients
+
+    def select_once(*args, **kwargs):
+        users = original_select(*args, **kwargs)
+        selected.append([user["id"] for user in users])
+        return users
+
+    def unexpected_selector(*args, **kwargs):
+        raise AssertionError("an observer independently selected campaign recipients")
+
+    monkeypatch.setattr(campaigns_module, "select_recipients", select_once)
+    monkeypatch.setattr(website_module, "select_recipients", unexpected_selector)
+    email_observer = EmailNotificationObserver(
+        sender=sender, recipient_selector=unexpected_selector, delivery_store=delivery_store
+    )
+    captured = RecordingObserver()
+    with isolate_publisher():
+        notification_publisher.subscribe(website_notification_observer)
+        notification_publisher.subscribe(email_observer)
+        notification_publisher.subscribe(captured)
+        result = campaigns_module.send_campaign(admin.id, campaign.id)
+
+    rows = test_session.exec(
+        select(Notification).where(Notification.event_id == f"campaign-{campaign.id}-sent")
+    ).all()
+    assert result["ok"] is True
+    assert selected == [[eligible.id]]
+    assert [row.user_id for row in rows] == [eligible.id]
+    assert [call["recipient"] for call in sender.calls] == [eligible.email]
+    assert [recipient.user_id for recipient in captured.events[0].recipients] == [eligible.id]
+    assert isinstance(captured.events[0].recipients, tuple)
 
 
 def test_campaign_send_succeeds_when_email_observer_is_not_subscribed(

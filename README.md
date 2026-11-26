@@ -88,15 +88,29 @@ Same-origin browser clients can obtain a separate CSRF token from `GET /api/auth
 
 ## Campaign delivery and scheduling
 
-Campaigns publish website notifications to eligible verified alumni. If
+Administrators can target all eligible alumni, or select a faculty or department
+from existing alumni account values. Matching ignores surrounding whitespace
+and letter case. In every audience, recipients must be verified, active,
+non-revoked alumni with an approved UWI email address. If
 `NOTIFICATION_EMAIL_ENABLED=true`, the shared SMTP observer also attempts email
-delivery. Per-recipient email preferences are not currently configurable.
+delivery to the same eligible recipients as the website notification observer.
+Per-recipient email preferences are not currently configurable.
 Campaign success depends on website notification delivery. Email is attempted
 independently when enabled and is best-effort: an email failure alone does not
 make the campaign unsuccessful or trigger a campaign retry, and a `sent`
 status does not prove that a message reached an inbox. Email delivery records
 successful sends, but a process failure between SMTP acceptance and recording
 success can still result in a duplicate email on recovery.
+
+The audience choice is saved with each campaign. Recipients are resolved once
+per send attempt and shared by both observers. On recovery or retry, eligibility
+and faculty/department membership are checked again, so the recipients may
+change between attempts. Failed attempts remain in progress for a later
+processor run rather than being retried immediately in the same run.
+
+The campaign creation API accepts `audience_type` (`all`, `faculty`, or
+`department`) and `audience_value` for targeted campaigns. Omitting the type
+retains the existing all-eligible-alumni behavior.
 
 Scheduled campaigns can still be created, but the Render Blueprint does not
 include a scheduler, so they will not be processed automatically on Render.

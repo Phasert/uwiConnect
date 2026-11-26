@@ -247,6 +247,17 @@ def test_admin_dashboard_requires_admin_session(admin_client, alumni_client):
     assert "Admin dashboard" in page.text
 
 
+def test_admin_uses_admin_dashboard_not_alumni_board(admin_client):
+    assert admin_client.get("/app").status_code == 403
+    page = admin_client.get("/admin")
+    assert page.status_code == 200
+    assert "Admin dashboard" in page.text
+    assert re.search(r'href="[^"]*/admin">Admin</a>', page.text)
+    assert ">Browse boards</a>" not in page.text
+    assert "My submissions" not in page.text
+    assert re.search(r'href="[^"]*/app/dashboard', page.text) is None
+
+
 def test_overview_links_resolve_to_authenticated_pages(admin_client):
     page = admin_client.get("/admin")
 
@@ -656,6 +667,170 @@ def test_campaign_form_requires_title_and_message(admin_client):
         "Campaign title and message are required."
         in admin_client.get("/admin/campaigns").text
     )
+
+
+def test_campaign_form_selects_and_displays_audience(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        campaigns,
+        "audience_options",
+        lambda: {"faculty": ["Science & Technology"], "department": ["Computing"]},
+    )
+    page = admin_client.get("/admin/campaigns")
+    assert 'name="audience_type"' in page.text
+    assert 'value="Science &amp; Technology"' in page.text
+    assert 'value="Computing"' in page.text
+
+    response = admin_client.post(
+        "/admin/campaigns",
+        data={
+            "subject": "Faculty audience",
+            "body": "Message",
+            "audience_type": "faculty",
+            "faculty": "Science & Technology",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    campaign = next(
+        row for row in campaigns.list_campaigns() if row["subject"] == "Faculty audience"
+    )
+    assert campaign["audience_type"] == "faculty"
+    assert campaign["audience_value"] == "Science & Technology"
+    assert "Faculty: Science &amp; Technology" in admin_client.get("/admin/campaigns").text
+
+
+def test_campaign_audience_and_filters_work_together(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        campaigns,
+        "audience_options",
+        lambda: {"faculty": ["Science"], "department": ["Computing"]},
+    )
+    query = "q=Target&status=draft&sort=subject_asc"
+    page = admin_client.get(f"/admin/campaigns?{query}")
+    assert 'value="Science"' in page.text
+    assert 'value="Target"' in page.text
+    response = admin_client.post(
+        f"/admin/campaigns?{query}",
+        data={"subject": "Target", "body": "Message", "audience_type": "all", "faculty": "Science"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith(f"/admin/campaigns?{query}")
+
+
+@pytest.mark.parametrize(
+    ("audience_type", "value"),
+    [("unknown", ""), ("faculty", ""), ("department", "Unknown")],
+)
+def test_web_and_api_reject_invalid_audiences(
+    admin_client, monkeypatch, audience_type, value
+):
+    monkeypatch.setattr(
+        campaigns,
+        "audience_options",
+        lambda: {"faculty": ["Science"], "department": ["Computing"]},
+    )
+    before = len(campaigns.list_campaigns())
+    web = admin_client.post(
+        "/admin/campaigns",
+        data={
+            "subject": "Invalid web audience",
+            "body": "Message",
+            "audience_type": audience_type,
+            "faculty": value,
+            "department": value,
+        },
+        follow_redirects=False,
+    )
+    api = admin_client.post(
+        "/api/admin/campaigns",
+        json={
+            "subject": "Invalid API audience",
+            "body": "Message",
+            "audience_type": audience_type,
+            "audience_value": value,
+        },
+    )
+    assert web.status_code == 303
+    assert api.status_code == 400
+    assert len(campaigns.list_campaigns()) == before
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"faculty": "Science"},
+        {"department": "Computing"},
+        {"audienceType": "faculty", "faculty": "Science"},
+        {"audience_type": "faculty", "audience_value": "Science", "faculty": "Science"},
+    ],
+)
+def test_api_rejects_unsupported_audience_fields(admin_client, extra):
+    before = len(campaigns.list_campaigns())
+    response = admin_client.post(
+        "/api/admin/campaigns",
+        json={"subject": "Invalid audience fields", "body": "Message", **extra},
+    )
+
+    assert response.status_code == 422
+    assert any(error["type"] == "extra_forbidden" for error in response.json()["detail"])
+    assert len(campaigns.list_campaigns()) == before
+
+
+def test_api_defaults_to_all_alumni_when_audience_is_omitted(admin_client):
+    response = admin_client.post(
+        "/api/admin/campaigns", json={"subject": "All alumni", "body": "Message"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["campaign"]["audience_type"] == "all"
+    assert response.json()["campaign"]["audience_value"] is None
+
+
+@pytest.mark.parametrize(
+    ("audience_type", "value", "expected"),
+    [("faculty", "science", "Science"), ("department", "computing", "Computing")],
+)
+def test_api_creates_targeted_campaign(
+    admin_client, monkeypatch, audience_type, value, expected
+):
+    monkeypatch.setattr(
+        campaigns,
+        "audience_options",
+        lambda: {"faculty": ["Science"], "department": ["Computing"]},
+    )
+    response = admin_client.post(
+        "/api/admin/campaigns",
+        json={
+            "subject": "Department audience",
+            "body": "Message",
+            "audience_type": audience_type,
+            "audience_value": value,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["campaign"]["audience_type"] == audience_type
+    assert response.json()["campaign"]["audience_value"] == expected
+
+
+@pytest.mark.parametrize("field", ["faculty", "department"])
+def test_web_rejects_all_alumni_with_a_target_value(admin_client, field):
+    before = len(campaigns.list_campaigns())
+    response = admin_client.post(
+        "/admin/campaigns",
+        data={
+            "subject": "Conflicting audience",
+            "body": "Message",
+            "audience_type": "all",
+            field: "Science",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert len(campaigns.list_campaigns()) == before
+    assert "Choose only the value for the selected audience." in admin_client.get(
+        "/admin/campaigns"
+    ).text
 
 
 def test_admin_sends_campaign(admin_client):

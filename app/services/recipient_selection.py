@@ -1,9 +1,8 @@
 """Shared audience selection for notification delivery.
 
-Both website and email delivery use this selector so eligibility and
-qualification rules are defined in one place. Eligibility stays with the
-existing account helpers; this module only decides which eligible alumni
-satisfy a listing's qualification targets.
+Eligibility stays with the existing account helpers. Listing observers use
+this selector independently; campaign delivery resolves it once per attempt
+and shares the result with both observers.
 """
 
 from __future__ import annotations
@@ -17,8 +16,14 @@ from app.models.listing import Listing
 from app.models.user import User
 from app.services.accounts import require_verified_alumni
 from app.services.board_auth import public_user
-from app.services.observer import LISTING_PUBLISHED, NotificationEvent
-from app.services.recipient_matching import qualifications_match
+from app.services.observer import CAMPAIGN_SENT, LISTING_PUBLISHED, NotificationEvent
+from app.services.recipient_matching import (
+    normalize_qualification,
+    qualifications_match,
+)
+
+TARGET_AUDIENCE_TYPES = frozenset({"faculty", "department"})
+AUDIENCE_TYPES = TARGET_AUDIENCE_TYPES | {"all"}
 
 
 class RecipientSelectionError(RuntimeError):
@@ -39,14 +44,27 @@ def _listing_targets(
 
 
 def select_recipients(
-    event: NotificationEvent, session: Session
+    event: NotificationEvent,
+    session: Session,
+    *,
+    audience_type: str = "all",
+    audience_value: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return the shared audience for ``event`` as public user dicts.
 
     Listing events require a real listing and a qualification match. Campaign
-    events use account eligibility only, so missing qualifications do not
-    exclude an otherwise eligible recipient.
+    events use account eligibility before applying their audience criteria.
     """
+    if event.event_type == CAMPAIGN_SENT:
+        if audience_type not in AUDIENCE_TYPES:
+            raise RecipientSelectionError("invalid campaign audience type")
+        if audience_type == "all" and audience_value is not None:
+            raise RecipientSelectionError("all-alumni audience cannot have a value")
+        if audience_type != "all" and (
+            not isinstance(audience_value, str) or not audience_value.strip()
+        ):
+            raise RecipientSelectionError("campaign audience value is required")
+    wanted = normalize_qualification(audience_value)
     targets = _listing_targets(event, session)
     users = session.exec(
         select(User).where(User.role == "alumni", User.email_verified == 1)
@@ -57,6 +75,10 @@ def select_recipients(
         public = public_user(user)
         if require_verified_alumni(public) is not None:
             continue
+        if event.event_type == CAMPAIGN_SENT and audience_type != "all":
+            value = public.get(audience_type)
+            if not isinstance(value, str) or normalize_qualification(value) != wanted:
+                continue
         if targets is not None and not qualifications_match(
             recipient_faculty=public["faculty"],
             recipient_department=public["department"],

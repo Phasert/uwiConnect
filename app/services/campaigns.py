@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,12 +12,22 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.models.campaign import Campaign
+from app.models.user import User
 from app.services.board_auth import get_user
 from app.services.observer import (
     CAMPAIGN_SENT,
     NotificationEvent,
+    NotificationRecipient,
     notification_publisher,
 )
+from app.services.recipient_matching import normalize_qualification
+from app.services.recipient_selection import (
+    AUDIENCE_TYPES,
+    RecipientSelectionError,
+    select_recipients,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -69,11 +81,32 @@ def _canonical_utc_timestamp(value: str) -> str | None:
 
 def _campaign_event(campaign: Campaign) -> NotificationEvent:
     event_message = f"Campaign: {campaign.subject} - {campaign.body[:120]}"
-    return NotificationEvent(
+    event = NotificationEvent(
         event_type=CAMPAIGN_SENT,
         campaign_id=campaign.id,
         message=event_message,
         event_id=f"campaign-{campaign.id}-sent",
+    )
+    try:
+        with Session(engine) as session:
+            users = select_recipients(
+                event,
+                session,
+                audience_type=campaign.audience_type,
+                audience_value=campaign.audience_value,
+            )
+    except RecipientSelectionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - Isolate selector failures per campaign.
+        raise RecipientSelectionError(
+            f"recipient selection failed ({type(exc).__name__})"
+        ) from None
+    return replace(
+        event,
+        recipients=tuple(
+            NotificationRecipient(user_id=user["id"], email=user["email"])
+            for user in users
+        ),
     )
 
 
@@ -86,6 +119,15 @@ def _notification_publish_succeeded(event: NotificationEvent) -> bool:
         and website_notification_observer in publish_result.succeeded_observers
         and website_notification_observer not in publish_result.failed_observers
     )
+
+
+def _publish_campaign(campaign: Campaign) -> bool:
+    try:
+        event = _campaign_event(campaign)
+    except RecipientSelectionError:
+        logger.exception("Could not resolve audience for campaign %s", campaign.id)
+        return False
+    return _notification_publish_succeeded(event)
 
 
 def _require_admin(admin_id: int) -> dict[str, Any] | None:
@@ -121,10 +163,64 @@ def _claim_immediate_send(campaign_id: int) -> tuple[str, Campaign | None]:
     return "state_changed", current
 
 
-def create_draft(admin_id: int, *, subject: str, body: str) -> dict[str, Any]:
+def audience_options() -> dict[str, list[str]]:
+    with Session(engine) as session:
+        rows = session.exec(
+            select(User.faculty, User.department).where(User.role == "alumni")
+        ).all()
+    options: dict[str, dict[str, str]] = {"faculty": {}, "department": {}}
+    for faculty, department in rows:
+        for field, value in (("faculty", faculty), ("department", department)):
+            normalized = normalize_qualification(value)
+            if normalized is not None and value is not None:
+                options[field].setdefault(normalized, value.strip())
+    return {
+        field: sorted(values.values(), key=str.casefold)
+        for field, values in options.items()
+    }
+
+
+def _validate_campaign_audience(
+    audience_type: str, audience_value: str | None
+) -> tuple[str | None, str | None]:
+    if audience_type not in AUDIENCE_TYPES:
+        return None, "Choose a valid campaign audience."
+    if audience_type == "all":
+        if audience_value is not None and audience_value.strip():
+            return None, "All eligible alumni does not use an audience value."
+        return None, None
+    if not isinstance(audience_value, str):
+        return None, f"Choose a valid {audience_type}."
+    wanted = normalize_qualification(audience_value)
+    if wanted is None:
+        return None, f"Choose a valid {audience_type}."
+    value = next(
+        (
+            option
+            for option in audience_options()[audience_type]
+            if normalize_qualification(option) == wanted
+        ),
+        None,
+    )
+    if value is None:
+        return None, f"Choose a valid {audience_type}."
+    return value, None
+
+
+def create_draft(
+    admin_id: int,
+    *,
+    subject: str,
+    body: str,
+    audience_type: str = "all",
+    audience_value: str | None = None,
+) -> dict[str, Any]:
     admin_error = _require_admin(admin_id)
     if admin_error:
         return admin_error
+    audience_value, error = _validate_campaign_audience(audience_type, audience_value)
+    if error:
+        return {"ok": False, "error": error}
     with Session(engine) as session:
         campaign = Campaign(
             admin_id=admin_id,
@@ -133,6 +229,8 @@ def create_draft(admin_id: int, *, subject: str, body: str) -> dict[str, Any]:
             status="draft",
             created_at=_now(),
             sent_at=None,
+            audience_type=audience_type,
+            audience_value=audience_value,
         )
         session.add(campaign)
         session.commit()
@@ -230,7 +328,7 @@ def send_campaign(admin_id: int, campaign_id: int) -> dict[str, Any]:
     campaign = _load_campaign(campaign_id)
     if campaign is None:
         return {"ok": False, "error": "campaign not found"}
-    observers_succeeded = _notification_publish_succeeded(_campaign_event(campaign))
+    observers_succeeded = _publish_campaign(campaign)
     if not observers_succeeded:
         return {
             "ok": False,
@@ -278,8 +376,7 @@ def _publish_scheduled_campaign(campaign_id: int) -> bool:
         if campaign is None or campaign.status not in {"sending", "scheduled"}:
             return False
 
-    event = _campaign_event(campaign)
-    observers_succeeded = _notification_publish_succeeded(event)
+    observers_succeeded = _publish_campaign(campaign)
 
     # Website notification failures leave the campaign in sending for recovery.
     # Email observer failures are logged by the publisher but are best-effort.
@@ -340,8 +437,10 @@ def process_due_campaigns(*, now: str | None = None) -> dict[str, int]:
 
     processed = 0
     retained = 0
+    due_campaigns = _due_campaigns(current)
+    sending_campaigns = _sending_campaigns()
     due_processed, due_retained = _process_campaign_batch(
-        _due_campaigns(current),
+        due_campaigns,
         claim_due=True,
         current=current,
     )
@@ -352,7 +451,7 @@ def process_due_campaigns(*, now: str | None = None) -> dict[str, int]:
     # Re-publishing uses the campaign's deterministic event ID, so the existing
     # notification unique index prevents duplicate notification rows.
     sending_processed, sending_retained = _process_campaign_batch(
-        _sending_campaigns(),
+        sending_campaigns,
         claim_due=False,
         current=current,
     )

@@ -9,6 +9,7 @@ from app.main import app
 from app.models.user import User
 from app.seed import seed
 from app.services import boards
+from app.utilities.security import create_access_token
 from tests.listing_auth_helpers import (
     VERIFIED_ALUMNI_EMAIL,
     VERIFIED_ALUMNI_PASSWORD,
@@ -80,26 +81,27 @@ def test_verified_alumni_sees_real_featured_opportunities():
 
 
 @pytest.mark.parametrize(
-    ("email", "password", "api_status", "app_status"),
+    ("email", "password", "status"),
     [
-        ("alumni.pending@gmail.com", "alumni-dev", 403, 403),
-        ("admin@uwi.edu", "admin-dev", 403, 403),
+        ("alumni.pending@gmail.com", "alumni-dev", 401),
+        ("admin@uwi.edu", "admin-dev", 403),
     ],
 )
-def test_ineligible_accounts_see_preview_and_cannot_browse(
-    email, password, api_status, app_status
-):
+def test_ineligible_accounts_see_preview_and_cannot_browse(email, password, status):
     _publish_distinctive()
     client = TestClient(app)
-    login(client, email, password)
+    if email == "alumni.pending@gmail.com":
+        client.cookies.set("access_token", create_access_token({"sub": str(_user_id(email))}))
+    else:
+        login(client, email, password)
 
     page = client.get("/")
 
     assert page.status_code == 200
     assert PREVIEW_MESSAGE in page.text
     assert "Distinctive Graduate Role" not in page.text
-    assert client.get("/api/boards").status_code == api_status
-    assert client.get("/app").status_code == app_status
+    assert client.get("/api/boards").status_code == status
+    assert client.get("/app").status_code == status
 
 
 @pytest.mark.parametrize(

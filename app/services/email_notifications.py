@@ -80,7 +80,11 @@ class EmailNotificationObserver:
 
     def _unique_recipients(self, event: NotificationEvent) -> Iterable[str]:
         seen: set[str] = set()
-        for value in self._recipient_selector(event):
+        if event.event_type == CAMPAIGN_SENT:
+            values = (recipient.email for recipient in event.require_campaign_recipients())
+        else:
+            values = self._recipient_selector(event)
+        for value in values:
             recipient = normalize_email(value) if isinstance(value, str) else ""
             if not recipient or recipient in seen:
                 continue

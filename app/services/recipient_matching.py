@@ -10,7 +10,7 @@ integration work.
 from __future__ import annotations
 
 
-def _normalize(value: str | None) -> str | None:
+def normalize_qualification(value: str | None) -> str | None:
     """Trim and casefold a value; blanks count as missing."""
     if value is None:
         return None
@@ -36,13 +36,13 @@ def qualifications_match(
     - Values are trimmed and compared case-insensitively; blanks are missing.
     - Category is not a qualification target.
     """
-    faculty = _normalize(recipient_faculty)
-    department = _normalize(recipient_department)
+    faculty = normalize_qualification(recipient_faculty)
+    department = normalize_qualification(recipient_department)
     if faculty is None or department is None:
         return False
 
-    wanted_faculty = _normalize(target_faculty)
-    wanted_department = _normalize(target_department)
+    wanted_faculty = normalize_qualification(target_faculty)
+    wanted_department = normalize_qualification(target_department)
     if wanted_faculty is not None and faculty != wanted_faculty:
         return False
     return wanted_department is None or department == wanted_department

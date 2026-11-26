@@ -13,11 +13,6 @@ from . import router, templates
 def _dashboard_response(
     request: Request,
     user,
-    *,
-    form_kind: str = "job",
-    form_data: dict[str, str] | None = None,
-    form_error: str | None = None,
-    show_form: bool = False,
 ):
     return templates.TemplateResponse(
         request=request,
@@ -25,10 +20,26 @@ def _dashboard_response(
         context={
             "user": user,
             "listings": boards.list_by_author(user.id),
+        },
+    )
+
+
+def _submission_form_response(
+    request: Request,
+    user,
+    *,
+    form_kind: str = "job",
+    form_data: dict[str, str] | None = None,
+    form_error: str | None = None,
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="alumni_submission_form.html",
+        context={
+            "user": user,
             "form_kind": form_kind,
             "form_data": form_data or {},
             "form_error": form_error,
-            "show_form": show_form,
         },
     )
 
@@ -58,6 +69,14 @@ async def user_dashboard_view(
     user: AlumniDep,
 ):
     return _dashboard_response(request, user)
+
+
+@router.get("/app/dashboard/submit", response_class=HTMLResponse)
+async def submission_form_view(
+    request: Request,
+    user: AlumniDep,
+):
+    return _submission_form_response(request, user)
 
 
 @router.post("/app/dashboard/submit", response_class=HTMLResponse)
@@ -112,13 +131,12 @@ async def submit_listing_action(
         **details,
     )
     if not result.get("ok"):
-        return _dashboard_response(
+        return _submission_form_response(
             request,
             user,
             form_kind=kind,
             form_data={name: html.escape(value) for name, value in values.items()},
             form_error=result.get("error", "The listing could not be submitted."),
-            show_form=True,
         )
 
     flash(

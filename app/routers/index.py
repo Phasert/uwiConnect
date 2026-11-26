@@ -1,10 +1,9 @@
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 
-from app.dependencies.auth import IsUserLoggedIn, get_current_user, is_admin
+from app.dependencies.auth import IsUserLoggedIn, get_current_user, is_admin, is_alumni
 from app.dependencies.session import SessionDep
 from app.services import boards
-from app.services.alumni_eligibility import is_eligible_alumni
 
 from . import router, templates
 
@@ -19,11 +18,13 @@ async def index_view(
 ):
     app_home = request.url_for("login_view")
     admin_link = False
+    alumni_link = False
     featured_access = False
     if user_logged_in:
         user = await get_current_user(request, db)
         admin_link = await is_admin(user)
-        featured_access = is_eligible_alumni(user)
+        alumni_link = await is_alumni(user)
+        featured_access = alumni_link
         if admin_link:
             app_home = request.url_for("admin_home_view")
         else:
@@ -42,6 +43,7 @@ async def index_view(
             "user_logged_in": user_logged_in,
             "app_home": app_home,
             "is_admin": admin_link,
+            "is_alumni": alumni_link,
             "featured_access": featured_access,
             "featured_jobs": featured_jobs,
             "featured_events": featured_events,

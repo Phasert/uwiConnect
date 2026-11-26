@@ -33,6 +33,63 @@ def test_create_draft_campaign(test_session, monkeypatch) -> None:
     assert result["campaign"]["subject"] == "New opportunity"
     assert result["campaign"]["status"] == "draft"
     assert result["campaign"]["sent_at"] is None
+    assert result["campaign"]["audience_type"] == "all"
+    assert result["campaign"]["audience_value"] is None
+
+
+@pytest.mark.parametrize(
+    ("audience_type", "value", "expected"),
+    [
+        ("faculty", " science ", "Science"),
+        ("department", " computing ", "Computing"),
+    ],
+)
+def test_create_draft_saves_existing_target(
+    test_session, monkeypatch, audience_type, value, expected
+) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin")
+    alum = add_user(test_session, role="alumni")
+    alum.faculty = "Science"
+    alum.department = "Computing"
+    test_session.add(alum)
+    test_session.commit()
+
+    result = campaigns.create_draft(
+        admin.id,
+        subject="Targeted",
+        body="Message",
+        audience_type=audience_type,
+        audience_value=value,
+    )
+
+    assert result["ok"] is True
+    assert result["campaign"]["audience_type"] == audience_type
+    assert result["campaign"]["audience_value"] == expected
+
+
+@pytest.mark.parametrize(
+    ("audience_type", "value"),
+    [("other", None), ("faculty", None), ("department", ""), ("faculty", "Unknown")],
+)
+def test_create_draft_rejects_invalid_audience(
+    test_session, monkeypatch, audience_type, value
+) -> None:
+    monkeypatch.setattr(campaigns, "engine", test_session.get_bind())
+    monkeypatch.setattr("app.services.board_auth.engine", test_session.get_bind())
+    admin = add_user(test_session, role="admin")
+
+    result = campaigns.create_draft(
+        admin.id,
+        subject="Invalid",
+        body="Message",
+        audience_type=audience_type,
+        audience_value=value,
+    )
+
+    assert result["ok"] is False
+    assert campaigns.list_campaigns() == []
 
 
 def test_list_campaigns_returns_newest_first(test_session, monkeypatch) -> None:

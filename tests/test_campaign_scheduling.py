@@ -196,3 +196,24 @@ def test_campaign_database_schema_upgrade(tmp_path, monkeypatch) -> None:
 
     assert "scheduled_at" in columns
     assert tuple(row) == (1, "draft", None)
+
+
+def test_campaign_audience_schema_upgrade_preserves_legacy_rows(tmp_path, monkeypatch):
+    legacy_engine = create_engine(f"sqlite:///{tmp_path / 'audience-legacy.db'}")
+    with legacy_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE campaign (id INTEGER PRIMARY KEY, status VARCHAR)"
+            )
+        )
+        connection.execute(text("INSERT INTO campaign VALUES (1, 'scheduled')"))
+    monkeypatch.setattr(database_module, "engine", legacy_engine)
+
+    database_module._ensure_campaign_audience_columns()
+    database_module._ensure_campaign_audience_columns()
+
+    with legacy_engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT id, status, audience_type, audience_value FROM campaign")
+        ).one()
+    assert tuple(row) == (1, "scheduled", "all", None)

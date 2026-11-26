@@ -36,6 +36,7 @@ from app.services.observer import (
     CAMPAIGN_SENT,
     LISTING_PUBLISHED,
     NotificationEvent,
+    NotificationRecipient,
     notification_publisher,
 )
 from app.services.website_notifications import register_website_observer
@@ -377,6 +378,10 @@ def test_partial_smtp_failure_keeps_website_and_healthy_observer_success(stack) 
         campaign_id=campaign_id,
         message="Campaign: Partial failure",
         event_id="fake-smtp-partial-failure",
+        recipients=tuple(
+            NotificationRecipient(user.id, user.email)
+            for user in (people.matching, people.unqualified, people.other_faculty)
+        ),
     )
 
     with isolate_publisher():

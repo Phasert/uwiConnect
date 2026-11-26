@@ -234,6 +234,47 @@ def test_campaign_recipients_need_no_qualifications(test_session) -> None:
     assert _selected_ids(_campaign_event(), test_session) == {no_qualifications.id}
 
 
+@pytest.mark.parametrize(
+    ("audience_type", "audience_value", "matching_field"),
+    [
+        ("faculty", " science and technology ", "faculty"),
+        ("department", " computer science ", "department"),
+    ],
+)
+def test_campaign_targeting_applies_eligibility_first(
+    test_session, audience_type, audience_value, matching_field
+) -> None:
+    eligible = _user(test_session, "target@my.uwi.edu")
+    _user(test_session, "other@my.uwi.edu", **{matching_field: "Other"})
+    _user(test_session, "pending@my.uwi.edu", verified=0)
+    _user(test_session, "inactive@my.uwi.edu", account_active=False)
+    _user(test_session, "revoked@my.uwi.edu", account_revoked=True)
+    _user(test_session, "external@example.com")
+    _user(test_session, "admin@uwi.edu", role="admin")
+
+    users = select_recipients(
+        _campaign_event(),
+        test_session,
+        audience_type=audience_type,
+        audience_value=audience_value,
+    )
+    assert {user["id"] for user in users} == {eligible.id}
+
+
+@pytest.mark.parametrize(
+    ("audience_type", "audience_value"),
+    [("unknown", None), ("faculty", None), ("department", " "), ("all", "Other")],
+)
+def test_invalid_campaign_criteria_fail_closed(test_session, audience_type, audience_value):
+    with pytest.raises(RecipientSelectionError):
+        select_recipients(
+            _campaign_event(),
+            test_session,
+            audience_type=audience_type,
+            audience_value=audience_value,
+        )
+
+
 def test_email_selector_reuses_the_shared_audience(
     test_session, website_engine
 ) -> None:
