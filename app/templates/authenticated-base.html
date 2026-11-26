@@ -20,7 +20,6 @@
             {% if user.role == 'admin' %}
             <a class="app-nav-link{{ ' is-active' if request.url.path.startswith('/admin') }}" href="{{ url_for('admin_home_view') }}">Admin</a>
             {% endif %}
-            <a class="app-nav-link" href="/docs">API docs</a>
             {% include "partials/notification-bell.html" %}
             <form method="post" action="{{ url_for('logout') }}" class="m-0">
               <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
