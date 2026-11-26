@@ -4,6 +4,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.seed import seed
+from tests.listing_auth_helpers import (
+    VERIFIED_ALUMNI_EMAIL,
+    VERIFIED_ALUMNI_PASSWORD,
+    login,
+)
 
 
 def setup_module() -> None:
@@ -34,6 +39,7 @@ def test_api_login_admin():
 
 
 def test_boards_list():
+    login(client, VERIFIED_ALUMNI_EMAIL, VERIFIED_ALUMNI_PASSWORD)
     r = client.get("/api/boards")
     assert r.status_code == 200
     assert isinstance(r.json()["listings"], list)

@@ -3,7 +3,7 @@ import html
 from fastapi import Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.dependencies.auth import AlumniDep, AuthDep
+from app.dependencies.auth import AlumniDep
 from app.services import boards
 from app.utilities.flash import flash
 
@@ -36,7 +36,7 @@ def _dashboard_response(
 @router.get("/app", response_class=HTMLResponse)
 async def user_home_view(
     request: Request,
-    user: AuthDep,
+    user: AlumniDep,
     q: str | None = None,
     kind: str | None = None,
 ):

@@ -5,6 +5,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.models.listing import Listing
+from app.models.user import User
 from app.routers import board
 from app.services import boards
 from app.services.observer import notification_publisher
@@ -142,14 +143,23 @@ def test_expired_listings_stay_hidden_from_search_filters_and_route_response(
         category="Careers",
     )
 
+    user = User(
+        id=1,
+        username="verified@my.uwi.edu",
+        email="verified@my.uwi.edu",
+        password="unused",
+        role="alumni",
+        email_verified=1,
+    )
     response = board.browse(
+        user=user,
         q="Engineering",
         kind="event",
         category="Careers",
     )
 
     assert [row["id"] for row in response["listings"]] == [visible_id]
-    assert board.browse(q="Expo Past")["listings"] == []
+    assert board.browse(user=user, q="Expo Past")["listings"] == []
 
 
 def test_expiry_checks_do_not_publish_notifications(expiry_database):
