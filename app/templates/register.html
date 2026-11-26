@@ -2,6 +2,9 @@
 {% block title %}Register · UWI Connect{% endblock %}
 
 {% block content %}
+{% set values = form_data|default({}, true) %}
+{% set errors = field_errors|default({}, true) %}
+{% set domains = approved_domains|default([], true) %}
 <div class="auth-shell">
   <div class="netfield" aria-hidden="true"></div>
   <div class="wave-stack wave-stack-low" aria-hidden="true">
@@ -21,28 +24,46 @@
       <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
       <div class="mb-3">
         <label class="form-label" for="username">Username</label>
-        <input class="form-control" type="text" id="username" name="username" required autofocus>
+        <input class="form-control{% if errors.get('username') %} is-invalid{% endif %}" type="text" id="username" name="username"
+               value="{{ (values.get('username') or '')|e }}" required autofocus
+               aria-describedby="username-error"{% if errors.get('username') %} aria-invalid="true"{% endif %}>
+        <div class="invalid-feedback{% if errors.get('username') %} d-block{% endif %}" id="username-error">{{ errors.get('username', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="email">Email</label>
-        <input class="form-control" type="email" id="email" name="email" required>
+        <input class="form-control{% if errors.get('email') %} is-invalid{% endif %}" type="email" id="email" name="email"
+               value="{{ (values.get('email') or '')|e }}" required
+               aria-describedby="email-error"{% if errors.get('email') %} aria-invalid="true"{% endif %}
+               data-approved-domains='{{ domains|list|tojson }}'>
+        <div class="invalid-feedback{% if errors.get('email') %} d-block{% endif %}" id="email-error">{{ errors.get('email', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="password">Password</label>
-        <input class="form-control" type="password" id="password" name="password" required>
+        <input class="form-control{% if errors.get('password') %} is-invalid{% endif %}" type="password" id="password" name="password" required
+               aria-describedby="password-error"{% if errors.get('password') %} aria-invalid="true"{% endif %}>
+        <div class="invalid-feedback{% if errors.get('password') %} d-block{% endif %}" id="password-error">{{ errors.get('password', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="programme">Completed degree or programme</label>
-        <input class="form-control" type="text" id="programme" name="programme" required>
+        <input class="form-control{% if errors.get('programme') %} is-invalid{% endif %}" type="text" id="programme" name="programme"
+               value="{{ (values.get('programme') or '')|e }}" required
+               aria-describedby="programme-error"{% if errors.get('programme') %} aria-invalid="true"{% endif %}>
+        <div class="invalid-feedback{% if errors.get('programme') %} d-block{% endif %}" id="programme-error">{{ errors.get('programme', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="faculty">Faculty</label>
-        <input class="form-control" type="text" id="faculty" name="faculty">
+        <input class="form-control{% if errors.get('faculty') %} is-invalid{% endif %}" type="text" id="faculty" name="faculty"
+               value="{{ (values.get('faculty') or '')|e }}"
+               aria-describedby="faculty-error"{% if errors.get('faculty') %} aria-invalid="true"{% endif %}>
+        <div class="invalid-feedback{% if errors.get('faculty') %} d-block{% endif %}" id="faculty-error">{{ errors.get('faculty', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="department">Department</label>
-        <input class="form-control" type="text" id="department" name="department">
-        <div class="form-text">Provide a faculty or department.</div>
+        <input class="form-control{% if errors.get('department') %} is-invalid{% endif %}" type="text" id="department" name="department"
+               value="{{ (values.get('department') or '')|e }}"
+               aria-describedby="department-error department-help"{% if errors.get('department') %} aria-invalid="true"{% endif %}>
+        <div class="invalid-feedback{% if errors.get('department') %} d-block{% endif %}" id="department-error">{{ errors.get('department', '')|e }}</div>
+        <div class="form-text" id="department-help">Provide a faculty or department.</div>
       </div>
       <div class="d-grid gap-2 mb-3">
         <button class="btn btn-primary btn-lg" type="submit">Register</button>
@@ -55,4 +76,8 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block external_js %}
+<script src="{{ url_for('static', path='js/register.js') }}" defer></script>
 {% endblock %}
