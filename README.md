@@ -2,7 +2,7 @@
 
 Flawed baseline **0.2.0** built on [uwidcit/faststart](https://github.com/uwidcit/faststart).
 
-FastStart provides the SSR shell, JWT cookie auth, SQLModel, `manage.py`, and Render/Docker wiring. The uwi-connect scenario adds domain models/services and a JSON API under `/api` (see `/docs`).
+FastStart provides the SSR shell, JWT cookie auth, SQLModel, `manage.py`, and Render/Docker wiring. The uwi-connect scenario adds domain models/services and a JSON API under `/api`.
 
 ## Quick start
 
@@ -16,7 +16,7 @@ python manage.py init
 python manage.py run
 ```
 
-Open http://127.0.0.1:5000 — SSR auth shell; scenario JSON under `/api` and OpenAPI at `/docs`.
+Open http://127.0.0.1:5000 — SSR auth shell; scenario JSON under `/api`.
 
 ## Seeded API accounts
 

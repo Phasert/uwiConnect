@@ -27,6 +27,8 @@ async def lifespan(app: FastAPI):
 is_production = get_settings().env.lower() in {"prod", "production"}
 
 app = FastAPI(
+    docs_url=None,
+    redoc_url=None,
     middleware=[
         Middleware(
             SessionMiddleware,

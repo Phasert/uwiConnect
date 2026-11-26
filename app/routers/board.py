@@ -1,4 +1,4 @@
-"""UWI Connect scenario JSON API (OpenAPI /docs)."""
+"""UWI Connect scenario JSON API."""
 
 from __future__ import annotations
 

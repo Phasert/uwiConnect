@@ -16,11 +16,11 @@ python manage.py init
 python manage.py run
 ```
 
-Open http://127.0.0.1:5000 — SSR auth shell from FastStart; scenario JSON under `/api` and OpenAPI at `/docs`.
+Open http://127.0.0.1:5000 — SSR auth shell from FastStart; scenario JSON under `/api`.
 
 ## Expectations
 
-1. Run the app, explore `/docs`, and map behaviour to elicitable requirements.
+1. Run the app, explore the interface and API behaviour, and map behaviour to elicitable requirements.
 2. Find and fix defects (boards publish gate, verification, campaigns, notification fan-out, tests).
 3. Pay special attention to **notifications** (`app/services/notifications.py`) on listing publish and campaign send. The current “observer bus” is a global callback list with inconsistent subjects and audiences — replace it with a clearer design (the **Observer** pattern is a strong fit; defend alternatives if you choose one).
 4. Add meaningful tests; shallow starter tests are not enough for a grade.
