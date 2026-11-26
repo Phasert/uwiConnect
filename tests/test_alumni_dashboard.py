@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
@@ -62,6 +64,34 @@ def _add_listing(author_id: int, *, title: str, kind: str, status: str) -> None:
 def test_dashboard_requires_login(client):
     response = client.get("/app/dashboard")
     assert response.status_code == 401
+
+
+def test_dashboard_links_to_separate_submission_page(client):
+    page = _login(client, ALUMNI_EMAIL).get("/app/dashboard")
+
+    assert page.status_code == 200
+    assert 'href="http://testserver/app/dashboard/submit">Create submission</a>' in page.text
+    assert 'id="listingSubmissionForm"' not in page.text
+
+
+def test_alumni_can_navigate_between_dashboard_and_boards(client):
+    client = _login(client, ALUMNI_EMAIL)
+
+    dashboard = client.get("/app/dashboard")
+    assert dashboard.status_code == 200
+    assert re.search(
+        r'<a class="app-nav-link is-active" href="[^"]*/app/dashboard">My submissions</a>',
+        dashboard.text,
+    )
+    assert re.search(r'href="[^"]*/app">Browse boards</a>', dashboard.text)
+
+    boards = client.get("/app")
+    assert boards.status_code == 200
+    assert re.search(
+        r'<a class="app-nav-link is-active" href="[^"]*/app">Browse boards</a>',
+        boards.text,
+    )
+    assert re.search(r'href="[^"]*/app/dashboard">My submissions</a>', boards.text)
 
 
 def test_dashboard_shows_own_listings_with_statuses(client):

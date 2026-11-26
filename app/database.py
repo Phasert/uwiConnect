@@ -74,6 +74,20 @@ def _ensure_campaign_scheduled_at_column() -> None:
             conn.execute(text("ALTER TABLE campaign ADD COLUMN scheduled_at VARCHAR"))
 
 
+def _ensure_campaign_audience_columns() -> None:
+    inspector = inspect(engine)
+    if "campaign" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("campaign")}
+    with engine.begin() as conn:
+        if "audience_type" not in columns:
+            conn.execute(
+                text("ALTER TABLE campaign ADD COLUMN audience_type VARCHAR NOT NULL DEFAULT 'all'")
+            )
+        if "audience_value" not in columns:
+            conn.execute(text("ALTER TABLE campaign ADD COLUMN audience_value VARCHAR"))
+
+
 def _ensure_listing_rejection_reason_column() -> None:
     inspector = inspect(engine)
     if "listing" not in inspector.get_table_names():
@@ -158,6 +172,7 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     _ensure_notification_event_id_column()
     _ensure_campaign_scheduled_at_column()
+    _ensure_campaign_audience_columns()
     _ensure_listing_rejection_reason_column()
     _ensure_listing_deletion_requested_column()
     _ensure_listing_detail_columns()

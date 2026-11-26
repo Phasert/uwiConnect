@@ -31,6 +31,32 @@
         <label class="form-label" for="campaignBody">Message</label>
         <textarea class="form-control" id="campaignBody" name="body" rows="3" required></textarea>
       </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="campaignAudience">Audience</label>
+        <select class="form-select" id="campaignAudience" name="audience_type">
+          <option value="all">All eligible alumni</option>
+          <option value="faculty">By faculty</option>
+          <option value="department">By department</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-6" id="campaignFacultyGroup">
+        <label class="form-label" for="campaignFaculty">Faculty</label>
+        <select class="form-select" id="campaignFaculty" name="faculty">
+          <option value="">Select a faculty</option>
+          {% for value in audience_options.faculty %}
+          <option value="{{ value|e }}">{{ value|e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6" id="campaignDepartmentGroup">
+        <label class="form-label" for="campaignDepartment">Department</label>
+        <select class="form-select" id="campaignDepartment" name="department">
+          <option value="">Select a department</option>
+          {% for value in audience_options.department %}
+          <option value="{{ value|e }}">{{ value|e }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Create draft</button>
       </div>
@@ -44,6 +70,7 @@
             <th scope="col">ID</th>
             <th scope="col">Title</th>
             <th scope="col">Message</th>
+            <th scope="col">Audience</th>
             <th scope="col">Status</th>
             <th scope="col">Actions</th>
           </tr>
@@ -54,6 +81,12 @@
             <td>#{{ campaign.id }}</td>
             <td>{{ campaign.subject | e }}</td>
             <td class="small">{{ campaign.body | e }}</td>
+            <td>
+              {% if campaign.audience_type == 'faculty' %}Faculty: {{ campaign.audience_value | e }}
+              {% elif campaign.audience_type == 'department' %}Department: {{ campaign.audience_value | e }}
+              {% elif campaign.audience_type == 'all' or campaign.audience_type is not defined %}All eligible alumni
+              {% else %}Invalid audience{% endif %}
+            </td>
             <td>
               {% if campaign.status == 'draft' %}
               <span class="badge bg-secondary">Draft</span>
@@ -101,4 +134,23 @@
 
 {% block subpage_scripts %}
 {{ admin_action_script(schedule=true) }}
+<script>
+(function () {
+  const audience = document.getElementById('campaignAudience');
+  const fields = {
+    faculty: document.getElementById('campaignFaculty'),
+    department: document.getElementById('campaignDepartment')
+  };
+  function syncAudience() {
+    Object.keys(fields).forEach(function (kind) {
+      const active = audience.value === kind;
+      document.getElementById(kind === 'faculty' ? 'campaignFacultyGroup' : 'campaignDepartmentGroup').classList.toggle('d-none', !active);
+      fields[kind].disabled = !active;
+      fields[kind].required = active;
+    });
+  }
+  audience.addEventListener('change', syncAudience);
+  syncAudience();
+})();
+</script>
 {% endblock %}

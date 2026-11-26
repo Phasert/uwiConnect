@@ -13,8 +13,10 @@ from app.utilities.security import create_access_token
 from tests.listing_auth_helpers import login
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
+ADMIN_EMAIL = "admin@uwi.edu"
 UNVERIFIED_EMAIL = "alumni.pending@gmail.com"
 PASSWORD = "alumni-dev"
+ADMIN_PASSWORD = "admin-dev"
 
 
 @pytest.fixture
@@ -23,8 +25,12 @@ def client():
     return TestClient(app)
 
 
-def _login(client: TestClient, email: str = ALUMNI_EMAIL) -> TestClient:
-    login(client, email, PASSWORD)
+def _login(
+    client: TestClient,
+    email: str = ALUMNI_EMAIL,
+    password: str = PASSWORD,
+) -> TestClient:
+    login(client, email, password)
     return client
 
 
@@ -65,15 +71,35 @@ def _event_data(**overrides):
 
 
 def test_authenticated_alumnus_can_open_submission_forms(client):
-    page = _login(client).get("/app/dashboard")
+    logged_in = _login(client)
+    dashboard = logged_in.get("/app/dashboard")
 
+    assert dashboard.status_code == 200
+    assert 'href="http://testserver/app/dashboard/submit">Create submission</a>' in dashboard.text
+    assert 'id="listingSubmissionForm"' not in dashboard.text
+    assert 'id="submissionPanel"' not in dashboard.text
+    assert 'data-edit-id="' in dashboard.text
+    assert 'data-delete-id="' in dashboard.text
+
+    page = logged_in.get("/app/dashboard/submit")
     assert page.status_code == 200
-    assert "Submit Listing" in page.text
     assert 'id="listingSubmissionForm"' in page.text
-    assert "action=" in page.text
-    assert "/app/dashboard/submit" in page.text
-    assert 'data-edit-id="' in page.text
-    assert 'data-delete-id="' in page.text
+    assert 'action="http://testserver/app/dashboard/submit"' in page.text
+    assert 'name="csrf_token"' in page.text
+    assert 'href="http://testserver/app/dashboard">Back to My Submissions</a>' in page.text
+    assert 'href="http://testserver/app/dashboard">Cancel</a>' in page.text
+
+
+def test_unauthenticated_user_cannot_open_submission_form(client):
+    assert client.get("/app/dashboard/submit").status_code == 401
+
+
+def test_admin_cannot_open_submission_form(client):
+    response = _login(client, ADMIN_EMAIL, ADMIN_PASSWORD).get(
+        "/app/dashboard/submit"
+    )
+
+    assert response.status_code == 403
 
 
 def test_unauthenticated_user_cannot_submit(client):
@@ -92,6 +118,7 @@ def test_unverified_alumnus_cannot_submit(client):
         user_id = session.exec(select(User.id).where(User.email == UNVERIFIED_EMAIL)).one()
     client.cookies.set("access_token", create_access_token({"sub": str(user_id)}))
     token = client.get("/api/auth/csrf").json()["csrf_token"]
+    assert client.get("/app/dashboard/submit").status_code == 401
     response = client.post(
         "/app/dashboard/submit", data=_job_data(), headers={"X-CSRF-Token": token}
     )
@@ -100,7 +127,7 @@ def test_unverified_alumnus_cannot_submit(client):
 
 
 def test_job_fields_render_with_backend_field_names(client):
-    page = _login(client).get("/app/dashboard")
+    page = _login(client).get("/app/dashboard/submit")
     job_fields = re.search(
         r'<fieldset id="jobFields".*?</fieldset>', page.text, re.DOTALL
     ).group(0)
@@ -130,7 +157,7 @@ def test_job_fields_render_with_backend_field_names(client):
 
 
 def test_event_fields_render_with_backend_field_names(client):
-    page = _login(client).get("/app/dashboard")
+    page = _login(client).get("/app/dashboard/submit")
     event_fields = re.search(
         r'<fieldset id="eventFields".*?</fieldset>', page.text, re.DOTALL
     ).group(0)
@@ -282,6 +309,8 @@ def test_invalid_dates_show_error_and_preserve_values(client):
     )
 
     assert response.status_code == 200
+    assert "<title>Create submission · UWI Connect</title>" in response.text
+    assert 'id="listingSubmissionForm"' in response.text
     assert "YYYY-MM-DD" in response.text
     assert 'value="31/07/2099"' in response.text
     assert "Listing submitted for review." not in response.text
@@ -323,6 +352,19 @@ def test_backend_rejection_preserves_input_without_success(client, monkeypatch):
     assert "company_name is required for job listings" in response.text
     assert 'value="Acme"' in response.text
     assert "Listing submitted for review." not in response.text
+
+
+def test_missing_csrf_token_rejects_submission(client):
+    logged_in = _login(client)
+    logged_in.headers.pop("X-CSRF-Token", None)
+
+    response = logged_in.post(
+        "/app/dashboard/submit",
+        data=_job_data(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
 
 
 def test_submission_does_not_trigger_notifications(client, monkeypatch):

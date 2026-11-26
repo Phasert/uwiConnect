@@ -60,7 +60,7 @@ def _publish(author_id, admin_id, title, proposed_title):
 
 
 def test_every_dashboard_post_form_has_csrf_field():
-    clients = [(_client(ALUMNI_EMAIL, ALUMNI_PASSWORD), "/app/dashboard")]
+    clients = [(_client(ALUMNI_EMAIL, ALUMNI_PASSWORD), "/app/dashboard/submit")]
     clients.extend(
         (_client(ADMIN_EMAIL, ADMIN_PASSWORD), path)
         for path in (
@@ -86,7 +86,7 @@ def test_every_dashboard_post_form_has_csrf_field():
 
 def test_alumni_submission_works_with_hidden_token_and_no_header():
     client = _client(ALUMNI_EMAIL, ALUMNI_PASSWORD, keep_header=False)
-    page = client.get("/app/dashboard")
+    page = client.get("/app/dashboard/submit")
     token = csrf_token_from_html(page.text)
 
     response = client.post(

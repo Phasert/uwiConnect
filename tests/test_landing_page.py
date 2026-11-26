@@ -114,8 +114,13 @@ def test_anonymous_navigation_shows_public_browse_and_sign_in():
     assert ">Sign in</a>" in page.text
     assert 'href="/api/boards?kind=job"' in page.text
     assert 'href="/api/boards?kind=event"' in page.text
+    assert 'href="http://testserver/">Home</a>' in page.text
+    assert re.search(r'href="[^"]*/app(?:/dashboard)?(?:[?#]|")', page.text) is None
+    assert "My submissions" not in page.text
+    assert "Admin dashboard" not in page.text
+    assert "Sign out" not in page.text
+    assert ">Browse boards</a>" not in page.text
     assert 'id="notificationMenu"' not in page.text
-    assert re.search(r'href="[^"]*/app/dashboard"', page.text) is None
     assert re.search(r'action="[^"]*/logout"', page.text) is None
 
 
@@ -123,7 +128,9 @@ def test_alumni_navigation_shows_dashboard_bell_and_logout():
     page = _client(ALUMNI_EMAIL, ALUMNI_PASSWORD).get("/")
 
     assert page.status_code == 200
-    assert re.search(r'href="[^"]*/app/dashboard"', page.text) is not None
+    assert "<title>UWI Connect · Alumni Opportunities and Events</title>" in page.text
+    assert re.search(r'href="[^"]*/app/dashboard">My submissions</a>', page.text)
+    assert ">My submissions</a>" in page.text
     assert 'id="notificationMenu"' in page.text
     assert 'data-stream-url="/api/notifications/stream"' in page.text
     assert re.search(r'action="[^"]*/logout"', page.text) is not None
@@ -138,6 +145,8 @@ def test_admin_navigation_shows_admin_dashboard_link():
     assert page.status_code == 200
     assert re.search(r'href="[^"]*/admin"', page.text) is not None
     assert ">Admin dashboard</a>" in page.text
+    assert "My submissions" not in page.text
+    assert re.search(r'href="[^"]*/app/dashboard', page.text) is None
 
 
 def test_featured_content_only_uses_eligible_published_listings():

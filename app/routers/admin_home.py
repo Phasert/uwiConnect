@@ -128,7 +128,10 @@ async def admin_campaigns_view(request: Request, user: AdminDep):
         request,
         user,
         "admin/campaigns.html",
-        {"campaigns": campaigns.list_campaigns()},
+        {
+            "campaigns": campaigns.list_campaigns(),
+            "audience_options": campaigns.audience_options(),
+        },
     )
 
 
@@ -229,12 +232,30 @@ async def admin_create_campaign(
     user: AdminDep,
     subject: str = Form(default=""),
     body: str = Form(default=""),
+    audience_type: str = Form(default="all"),
+    faculty: str = Form(default=""),
+    department: str = Form(default=""),
 ):
     if not subject.strip() or not body.strip():
         flash(request, "Campaign title and message are required.", "danger")
         return _redirect(request, "admin_campaigns_view")
 
-    result = campaigns.create_draft(user.id, subject=subject, body=body)
+    if (
+        (audience_type == "all" and (faculty.strip() or department.strip()))
+        or (audience_type == "faculty" and department.strip())
+        or (audience_type == "department" and faculty.strip())
+    ):
+        flash(request, "Choose only the value for the selected audience.", "danger")
+        return _redirect(request, "admin_campaigns_view")
+
+    audience_value = {"faculty": faculty, "department": department}.get(audience_type)
+    result = campaigns.create_draft(
+        user.id,
+        subject=subject,
+        body=body,
+        audience_type=audience_type,
+        audience_value=audience_value,
+    )
     if result.get("ok"):
         flash(request, "Campaign draft created.", "success")
     else:

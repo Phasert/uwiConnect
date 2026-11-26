@@ -11,3 +11,5 @@ class Campaign(SQLModel, table=True):
     created_at: str
     sent_at: str | None = None
     scheduled_at: str | None = None
+    audience_type: str = "all"
+    audience_value: str | None = None

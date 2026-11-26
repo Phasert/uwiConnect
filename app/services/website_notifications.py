@@ -14,7 +14,11 @@ from sqlmodel import Session
 from app.database import _NOTIFICATION_EVENT_INDEX as USER_EVENT_INDEX
 from app.database import engine
 from app.models.notification import Notification
-from app.services.observer import NotificationEvent, notification_publisher
+from app.services.observer import (
+    CAMPAIGN_SENT,
+    NotificationEvent,
+    notification_publisher,
+)
 from app.services.recipient_selection import select_recipients
 
 _PG_UNIQUE_VIOLATION = "23505"
@@ -45,18 +49,24 @@ def _is_duplicate_notification(exc: IntegrityError) -> bool:
 
 class WebsiteNotificationObserver:
     def __call__(self, event: NotificationEvent) -> None:
-        with Session(engine) as session:
-            recipients = select_recipients(event, session)
+        if event.event_type == CAMPAIGN_SENT:
+            recipient_ids = (
+                recipient.user_id for recipient in event.require_campaign_recipients()
+            )
+        else:
+            with Session(engine) as session:
+                recipients = select_recipients(event, session)
+            recipient_ids = (user["id"] for user in recipients)
 
         created_at = _now()
-        for user in recipients:
+        for user_id in recipient_ids:
             # One transaction per recipient keeps a duplicate conflict from
             # rolling back delivery to everyone else in the audience.
             try:
                 with Session(engine) as write_session:
                     write_session.add(
                         Notification(
-                            user_id=user["id"],
+                            user_id=user_id,
                             event_type=event.event_type,
                             message=event.message or event.event_type,
                             created_at=created_at,

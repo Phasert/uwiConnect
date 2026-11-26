@@ -76,8 +76,12 @@ class RejectionBody(BaseModel):
 
 
 class CampaignBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     subject: str
     body: str
+    audience_type: str = "all"
+    audience_value: str | None = None
 
 
 class ScheduleCampaignBody(BaseModel):
@@ -388,7 +392,11 @@ def create_campaign(
     _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
     result = campaigns.create_draft(
-        admin.id, subject=body.subject, body=body.body
+        admin.id,
+        subject=body.subject,
+        body=body.body,
+        audience_type=body.audience_type,
+        audience_value=body.audience_value,
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
