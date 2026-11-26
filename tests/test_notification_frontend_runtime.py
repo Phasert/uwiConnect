@@ -2,7 +2,8 @@
 
 The existing bell test only inspects source text. This harness executes the
 real JavaScript in Node with minimal DOM, fetch, and EventSource fakes so that
-live delivery, reconnect, and duplicate suppression are observed behavior.
+live delivery, reconnect, duplicate suppression, and badge counts are observed
+behavior.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ _HARNESS = r"""
 const fs = require('fs');
 const vm = require('vm');
 const source = fs.readFileSync(process.argv[1], 'utf8');
+const config = JSON.parse(process.argv[2] || '{}');
 
 function FakeElement(id) {
   this.id = id;
@@ -108,24 +110,47 @@ global.window = {
   clearTimeout(handle) { clearTimeout(handle); }
 };
 
+function notification(id, message, createdAt, eventType) {
+  return {
+    id,
+    user_id: 7,
+    event_type: eventType || 'listing.published',
+    message,
+    created_at: createdAt || '2026-11-25T00:00:00+00:00'
+  };
+}
+function configuredNotifications(values, prefix) {
+  return values.map(function (value) {
+    if (value && typeof value === 'object') return value;
+    return notification(value, prefix + ' ' + value);
+  });
+}
+const defaultInitial = [
+  notification(2, 'Inbox older', '2026-11-24T00:00:00+00:00'),
+  notification(1, 'Inbox oldest', '2026-11-23T00:00:00+00:00', 'campaign.sent')
+];
+const defaultReconciled = [
+  notification(3, 'Live newer', '2026-11-25T00:00:00+00:00'),
+  notification(2, 'Inbox older', '2026-11-24T00:00:00+00:00'),
+  notification(1, 'Inbox oldest', '2026-11-23T00:00:00+00:00', 'campaign.sent')
+];
+const initialNotifications = Array.isArray(config.initial)
+  ? configuredNotifications(config.initial, 'Inbox')
+  : defaultInitial;
+const reconciledNotifications = Array.isArray(config.reconcile)
+  ? configuredNotifications(config.reconcile, 'Reconciled')
+  : defaultReconciled;
+const firstInitialId = initialNotifications.length
+  ? initialNotifications[0].id
+  : 1;
+
 let fetchCalls = 0;
 global.fetch = async () => {
   fetchCalls += 1;
-  const notifications = fetchCalls === 1
-    ? [
-        { id: 2, user_id: 7, event_type: 'listing.published',
-          message: 'Inbox older', created_at: '2026-11-24T00:00:00+00:00' },
-        { id: 1, user_id: 7, event_type: 'campaign.sent',
-          message: 'Inbox oldest', created_at: '2026-11-23T00:00:00+00:00' }
-      ]
-    : [
-        { id: 3, user_id: 7, event_type: 'listing.published',
-          message: 'Live newer', created_at: '2026-11-25T00:00:00+00:00' },
-        { id: 2, user_id: 7, event_type: 'listing.published',
-          message: 'Inbox older', created_at: '2026-11-24T00:00:00+00:00' },
-        { id: 1, user_id: 7, event_type: 'campaign.sent',
-          message: 'Inbox oldest', created_at: '2026-11-23T00:00:00+00:00' }
-      ];
+  if (fetchCalls > 1 && config.failReconcile) {
+    return { status: 500, ok: false, json: async () => ({}) };
+  }
+  const notifications = fetchCalls === 1 ? initialNotifications : reconciledNotifications;
   return { status: 200, ok: true, json: async () => ({ notifications }) };
 };
 
@@ -143,15 +168,6 @@ class FakeEventSource {
 }
 global.EventSource = FakeEventSource;
 
-function notification(id, message) {
-  return {
-    id,
-    user_id: 7,
-    event_type: 'listing.published',
-    message,
-    created_at: '2026-11-25T00:00:00+00:00'
-  };
-}
 function messages() {
   return elements.notificationList.children
     .map((row) => row.children[0].textContent);
@@ -160,6 +176,10 @@ function snapshot() {
   return {
     visible: messages(),
     count: elements.notificationCount.textContent,
+    badge: elements.notificationBadge.textContent,
+    badgeHidden: elements.notificationBadge.classList.contains('d-none'),
+    label: elements.notificationBell.attributes['aria-label'],
+    status: elements.notificationStatus.textContent,
     sources: sources.length,
     fetchCalls,
     firstClosed: sources.length ? sources[0].closed : null,
@@ -187,17 +207,21 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     lastEventId: '3'
   });
   sources[0].emit('notification', {
-    data: JSON.stringify(notification(1, 'Inbox duplicate')),
-    lastEventId: '1'
+    data: JSON.stringify(notification(firstInitialId, 'Inbox duplicate')),
+    lastEventId: String(firstInitialId)
   });
   await wait(5);
   const afterDuplicates = snapshot();
+
+  elements.notificationMenu.listeners['show.bs.dropdown']();
+  await wait(5);
+  const afterDropdown = snapshot();
 
   sources[0].onerror();
   await wait(30);
   const afterError = snapshot();
 
-  console.log(JSON.stringify({ initial, afterLive, afterDuplicates, afterError }));
+  console.log(JSON.stringify({ initial, afterLive, afterDuplicates, afterDropdown, afterError }));
 })().catch((error) => {
   console.error(error);
   process.exit(1);
@@ -205,27 +229,46 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 """
 
 
-def test_script_delivers_reconnects_and_deduplicates_by_id() -> None:
+def _run_scenario(config: dict[str, object] | None = None) -> dict:
+    command = ["node", "-e", _HARNESS, str(JS_PATH)]
+    if config is not None:
+        command.append(json.dumps(config))
     result = subprocess.run(
-        ["node", "-e", _HARNESS, str(JS_PATH)],
+        command,
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    report = json.loads(result.stdout)
+    return json.loads(result.stdout)
+
+
+def test_script_delivers_reconnects_and_deduplicates_by_id() -> None:
+    report = _run_scenario()
 
     assert report["initial"]["visible"] == ["Inbox older", "Inbox oldest"]
     assert report["initial"]["count"] == "2 notifications"
+    assert report["initial"]["badge"] == "2"
+    assert report["initial"]["badgeHidden"] is False
+    assert report["initial"]["label"] == "Notifications, 2 total"
     assert report["initial"]["sources"] == 1
     assert report["initial"]["streamUrls"] == ["/api/notifications/stream"]
 
     assert report["afterLive"]["visible"][0] == "Live newer"
     assert len(report["afterLive"]["visible"]) == 3
     assert report["afterLive"]["count"] == "3 notifications"
+    assert report["afterLive"]["badge"] == "3"
+    assert report["afterLive"]["badgeHidden"] is False
+    assert report["afterLive"]["label"] == "Notifications, 3 total"
 
     assert report["afterDuplicates"]["visible"] == report["afterLive"]["visible"]
     assert report["afterDuplicates"]["count"] == "3 notifications"
+    assert report["afterDuplicates"]["badge"] == "3"
+    assert report["afterDuplicates"]["label"] == "Notifications, 3 total"
+
+    assert report["afterDropdown"]["badge"] == "3"
+    assert report["afterDropdown"]["fetchCalls"] == 1
+    assert report["afterDropdown"]["visible"] == report["afterLive"]["visible"]
 
     assert report["afterError"]["fetchCalls"] == 2
     assert report["afterError"]["firstClosed"] is True
@@ -236,3 +279,85 @@ def test_script_delivers_reconnects_and_deduplicates_by_id() -> None:
     ]
     assert 1000 in report["afterError"]["reconnectDelays"]
     assert report["afterError"]["visible"] == report["afterLive"]["visible"]
+    assert report["afterError"]["badge"] == "3"
+    assert report["afterError"]["badgeHidden"] is False
+    assert report["afterError"]["label"] == "Notifications, 3 total"
+
+
+def test_zero_notifications_hide_the_badge() -> None:
+    initial = _run_scenario({"initial": []})["initial"]
+
+    assert initial["visible"] == []
+    assert initial["count"] == ""
+    assert initial["badge"] == "0"
+    assert initial["badgeHidden"] is True
+    assert initial["label"] == "Notifications"
+    assert initial["status"] == "You have no notifications yet."
+
+
+@pytest.mark.parametrize(
+    ("total", "badge"),
+    [
+        (1, "1"),
+        (99, "99"),
+        (120, "99+"),
+    ],
+)
+def test_badge_shows_full_count_until_99_then_caps(total: int, badge: str) -> None:
+    initial = _run_scenario({"initial": list(range(1, total + 1))})["initial"]
+
+    assert len(initial["visible"]) == total
+    assert initial["badge"] == badge
+    assert initial["badgeHidden"] is False
+    assert initial["label"] == f"Notifications, {total} total"
+    suffix = "" if total == 1 else "s"
+    assert initial["count"] == f"{total} notification{suffix}"
+
+
+def test_opening_dropdown_does_not_reset_the_counter() -> None:
+    report = _run_scenario()
+
+    after_live = report["afterLive"]
+    after_dropdown = report["afterDropdown"]
+
+    assert after_live["badge"] == "3"
+    assert after_dropdown["badge"] == "3"
+    assert after_dropdown["badgeHidden"] is False
+    assert after_dropdown["label"] == "Notifications, 3 total"
+    assert after_dropdown["count"] == "3 notifications"
+    assert after_dropdown["visible"] == after_live["visible"]
+    assert after_dropdown["fetchCalls"] == after_live["fetchCalls"] == 1
+
+
+def test_reconciliation_updates_the_badge_count() -> None:
+    report = _run_scenario({"reconcile": [4, 3, 2, 1]})
+    after_error = report["afterError"]
+
+    assert report["initial"]["badge"] == "2"
+    assert report["afterLive"]["badge"] == "3"
+    assert report["afterDuplicates"]["badge"] == "3"
+    assert after_error["fetchCalls"] == 2
+    assert after_error["badge"] == "4"
+    assert after_error["badgeHidden"] is False
+    assert after_error["label"] == "Notifications, 4 total"
+    assert after_error["count"] == "4 notifications"
+    assert after_error["visible"] == [
+        "Reconciled 4",
+        "Reconciled 3",
+        "Reconciled 2",
+        "Reconciled 1",
+    ]
+
+
+def test_failed_reconciliation_retains_notifications_and_count() -> None:
+    report = _run_scenario({"failReconcile": True})
+    after_error = report["afterError"]
+
+    assert after_error["fetchCalls"] == 2
+    assert after_error["firstClosed"] is True
+    assert after_error["visible"] == report["afterLive"]["visible"]
+    assert after_error["badge"] == "3"
+    assert after_error["badgeHidden"] is False
+    assert after_error["label"] == "Notifications, 3 total"
+    assert after_error["count"] == "3 notifications"
+    assert "temporarily unavailable" in after_error["status"]
