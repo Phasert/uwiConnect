@@ -154,6 +154,46 @@
   color: var(--brand-muted);
 }
 
+.admin-dashboard .admin-submission-summary {
+  border-radius: var(--brand-radius);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.admin-dashboard .admin-submission-summary::marker {
+  color: var(--brand-accent-2);
+}
+
+.admin-dashboard .admin-submission-summary:focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 3px;
+}
+
+.admin-dashboard .admin-submission-summary-copy {
+  min-width: 0;
+}
+
+.admin-dashboard .admin-submission-summary-meta {
+  flex-shrink: 0;
+}
+
+.admin-dashboard .admin-submission-body {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--brand-border);
+}
+
+@media (max-width: 575.98px) {
+  .admin-dashboard .admin-submission-summary-copy,
+  .admin-dashboard .admin-submission-summary-meta {
+    flex-basis: 100%;
+  }
+
+  .admin-dashboard .admin-submission-summary-meta {
+    flex-shrink: 1;
+  }
+}
+
 .admin-dashboard .admin-empty-state {
   border-color: var(--brand-border);
   color: var(--brand-muted);

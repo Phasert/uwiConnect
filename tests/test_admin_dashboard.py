@@ -181,6 +181,10 @@ def _sample_campaign(campaign_id, **overrides):
     return row
 
 
+def _submission_details(html):
+    return re.findall(r"<details\b([^>]*)>(.*?)</details>", html, re.DOTALL)
+
+
 def _isolate_admin_context(
     monkeypatch,
     *,
@@ -404,6 +408,95 @@ def test_pending_listings_show_expanded_fields(admin_client, alumni_client):
         "Reject",
     ):
         assert text in page.text
+
+
+def test_pending_submissions_are_collapsed_by_default(admin_client, monkeypatch):
+    _isolate_admin_context(
+        monkeypatch,
+        pending=[_sample_listing(8201), _sample_listing(8202)],
+    )
+
+    details = _submission_details(admin_client.get("/admin/moderation").text)
+
+    assert len(details) == 2
+    ids = []
+    for attrs, content in details:
+        assert 'class="admin-submission"' in attrs
+        assert not re.search(r"\bopen\b", attrs)
+        assert "<summary" in content
+        match = re.search(r'\bid="(submissionDetails\d+)"', attrs)
+        assert match
+        ids.append(match.group(1))
+    assert len(set(ids)) == 2
+
+
+def test_pending_submission_summary_shows_key_information(admin_client, monkeypatch):
+    _isolate_admin_context(
+        monkeypatch,
+        pending=[
+            _sample_listing(
+                8301,
+                kind="job",
+                title="Summary Job",
+                created_at="2099-03-04T09:30:00+00:00",
+            ),
+            _sample_listing(
+                8302,
+                kind="event",
+                title="Summary Event",
+                created_at="2099-05-06T17:00:00+00:00",
+            ),
+        ],
+    )
+
+    details = _submission_details(admin_client.get("/admin/moderation").text)
+
+    assert len(details) == 2
+    expected = (
+        (8301, "Summary Job", "Job", "2099-03-04T09:30:00+00:00"),
+        (8302, "Summary Event", "Event", "2099-05-06T17:00:00+00:00"),
+    )
+    for (_, content), (listing_id, title, kind, created_at) in zip(details, expected):
+        summary_match = re.search(r"<summary\b[^>]*>(.*?)</summary>", content, re.DOTALL)
+        assert summary_match
+        summary = summary_match.group(1)
+
+        assert title in summary
+        assert f"Listing #{listing_id}" in summary
+        assert kind in summary
+        assert "Test Author" in summary
+        assert created_at in summary
+        assert "Status:" in summary
+        assert "Pending" in summary
+        assert "Review details" in summary
+
+
+def test_pending_submission_actions_stay_outside_summary_and_keep_csrf(
+    admin_client, monkeypatch
+):
+    _isolate_admin_context(monkeypatch, pending=[_sample_listing(8401)])
+
+    html = admin_client.get("/admin/moderation").text
+    details = _submission_details(html)
+
+    assert len(details) == 1
+    _, content = details[0]
+    summary_match = re.search(r"<summary\b[^>]*>(.*?)</summary>", content, re.DOTALL)
+    assert summary_match
+    summary = summary_match.group(1)
+
+    assert "<form" not in summary
+    assert 'type="submit"' not in summary
+    assert content.count('<form method="post"') == 2
+    assert "/admin/listings/8401/publish" in content
+    assert "/admin/listings/8401/reject" in content
+    assert content.count('name="csrf_token"') == 2
+    assert 'name="rejection_reason"' in content
+    assert "Optional. Tell the author what to change" in content
+    assert "Approve listing #8401" in content
+    assert "Reject listing #8401" in content
+    assert content.count("data-admin-action") == 2
+    assert "button.disabled = true;" in html
 
 
 def test_admin_approves_pending_listing(admin_client, alumni_client):
