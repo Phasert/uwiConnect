@@ -1,0 +1,53 @@
+{% macro admin_page_header(title, description) %}
+<div class="admin-page-header mb-4">
+  <a class="admin-back-link" href="{{ url_for('admin_home_view') }}">← Back to admin dashboard</a>
+  <h1>{{ title | e }}</h1>
+  <p class="admin-page-description mb-0">{{ description | e }}</p>
+</div>
+{% endmacro %}
+
+{% macro listing_kind_label(kind) -%}
+{%- if kind == 'job' -%}Job{%- elif kind == 'event' -%}Event{%- else -%}{{ (kind or 'Listing') | capitalize | e }}{%- endif -%}
+{%- endmacro %}
+
+{% macro moderation_detail(label, value) %}
+{% if value is not none and value != '' %}
+<dt class="col-5 col-sm-4 text-body-secondary">{{ label }}</dt>
+<dd class="col-7 col-sm-8 mb-0 text-break">{{ value | e }}</dd>
+{% endif %}
+{% endmacro %}
+
+{% macro revision_display(value, is_proposed=false) %}
+{% if value is none or value == '' %}
+  {% if is_proposed %}<span class="badge text-bg-secondary">Removed</span> <span class="text-body-secondary">No value</span>{% else %}<span class="text-body-secondary fst-italic">Not set</span>{% endif %}
+{% else %}
+  <span class="text-break">{{ value | e }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro admin_action_script(confirm_delete=false, schedule=false) %}
+<script>
+document.querySelectorAll('form[data-admin-action]').forEach(function (form) {
+  form.addEventListener('submit', function (event) {
+    {% if confirm_delete %}
+    if (form.dataset.confirmDelete === 'true' && !window.confirm('Permanently delete this listing? This cannot be undone.')) {
+      event.preventDefault();
+      return;
+    }
+    {% endif %}
+    {% if schedule %}
+    const scheduleInput = form.querySelector('input[data-schedule-input]');
+    const scheduledAt = form.querySelector('input[name="scheduled_at"]');
+    if (scheduleInput && scheduledAt && scheduleInput.value) {
+      scheduledAt.value = new Date(scheduleInput.value).toISOString();
+    }
+    {% endif %}
+    const button = form.querySelector('button[type="submit"]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Working...';
+    }
+  });
+});
+</script>
+{% endmacro %}

@@ -44,16 +44,26 @@ def test_bell_is_rendered_on_authenticated_alumni_pages(alumni_client):
         assert 'id="notificationPanel"' in page.text
 
 
-def test_bell_does_not_break_admin_dashboard_layout():
+def test_bell_is_rendered_on_every_admin_page():
     client = TestClient(app)
     authenticate(client, ADMIN_EMAIL, ADMIN_PASSWORD)
 
-    page = client.get("/admin")
+    pages = (
+        ("/admin", "Admin dashboard"),
+        ("/admin/moderation", 'id="moderation"'),
+        ("/admin/revisions", 'id="revisions"'),
+        ("/admin/deletions", 'id="deletions"'),
+        ("/admin/campaigns", 'id="campaigns"'),
+    )
+    for path, marker in pages:
+        page = client.get(path)
 
-    assert page.status_code == 200
-    assert "Admin dashboard" in page.text
-    assert 'id="notificationMenu"' in page.text
-    assert 'id="moderation"' in page.text
+        assert page.status_code == 200
+        assert marker in page.text
+        assert 'id="notificationMenu"' in page.text
+        assert 'id="notificationBell"' in page.text
+        assert 'id="notificationPanel"' in page.text
+        assert page.text.count("notifications.js") == 1
 
 
 def test_anonymous_user_has_no_bell_and_cannot_open_protected_pages():

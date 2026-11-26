@@ -1,0 +1,99 @@
+{% extends "authenticated-base.html" %}
+{% from "partials/admin_macros.html" import admin_page_header, admin_action_script with context %}
+{% block title %}Campaigns · Admin · UWI Connect{% endblock %}
+
+{% block external_css %}
+{{ super() }}
+<link href="{{ url_for('static', path='css/admin-dashboard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block subpage_content %}
+<div class="admin-dashboard">
+{{ admin_page_header("Campaigns", "Manage campaign drafts, sends and schedules.") }}
+
+<section class="card" id="campaigns" aria-labelledby="campaignHeading">
+  <div class="card-body">
+    <h2 id="campaignHeading" class="h5">Campaign management</h2>
+    <p class="text-body-secondary small">Sending a campaign publishes an in-app Observer notification. This demo does not deliver email.</p>
+
+    <form method="post" action="{{ url_for('admin_create_campaign') }}" data-admin-action class="row g-3 mb-4">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="campaignSubject">Campaign title</label>
+        <input class="form-control" id="campaignSubject" name="subject" required />
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="campaignBody">Message</label>
+        <textarea class="form-control" id="campaignBody" name="body" rows="3" required></textarea>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Create draft</button>
+      </div>
+    </form>
+
+    {% if campaigns %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Title</th>
+            <th scope="col">Message</th>
+            <th scope="col">Status</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for campaign in campaigns %}
+          <tr>
+            <td>#{{ campaign.id }}</td>
+            <td>{{ campaign.subject }}</td>
+            <td class="small">{{ campaign.body }}</td>
+            <td>
+              {% if campaign.status == 'draft' %}
+              <span class="badge bg-secondary">Draft</span>
+              {% elif campaign.status == 'scheduled' %}
+              <span class="badge bg-info text-dark">Scheduled</span>
+              {% elif campaign.status == 'sending' %}
+              <span class="badge bg-warning text-dark">Sending</span>
+              {% elif campaign.status == 'sent' %}
+              <span class="badge bg-success">Sent</span>
+              {% else %}
+              <span class="badge bg-light text-dark">{{ campaign.status | capitalize }}</span>
+              {% endif %}
+              {% if campaign.scheduled_at %}<div class="small text-body-secondary">{{ campaign.scheduled_at }}</div>{% endif %}
+              {% if campaign.sent_at %}<div class="small text-body-secondary">{{ campaign.sent_at }}</div>{% endif %}
+            </td>
+            <td>
+              {% if campaign.status == 'draft' %}
+              <form method="post" action="{{ url_for('admin_send_campaign', campaign_id=campaign.id) }}" data-admin-action class="mb-2">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+                <button type="submit" class="btn btn-sm btn-success">Send now</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_schedule_campaign', campaign_id=campaign.id) }}" data-admin-action data-schedule-form>
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request)|e }}">
+                <label class="form-label small" for="scheduleAt{{ campaign.id }}">Schedule for</label>
+                <input class="form-control form-control-sm mb-1" type="datetime-local" id="scheduleAt{{ campaign.id }}" data-schedule-input />
+                <input type="hidden" name="scheduled_at" />
+                <button type="submit" class="btn btn-sm btn-outline-primary">Schedule</button>
+              </form>
+              {% else %}
+              <span class="text-body-secondary small">No actions available</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0" role="status">No campaigns have been created yet.</div>
+    {% endif %}
+  </div>
+</section>
+</div>
+{% endblock %}
+
+{% block subpage_scripts %}
+{{ admin_action_script(schedule=true) }}
+{% endblock %}

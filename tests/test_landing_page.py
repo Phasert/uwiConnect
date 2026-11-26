@@ -252,5 +252,13 @@ def test_featured_empty_state_when_no_eligible_listings():
 def test_existing_protected_routes_still_require_authentication():
     client = TestClient(app)
 
-    for path in ("/app", "/app/dashboard", "/admin"):
+    for path in (
+        "/app",
+        "/app/dashboard",
+        "/admin",
+        "/admin/moderation",
+        "/admin/revisions",
+        "/admin/deletions",
+        "/admin/campaigns",
+    ):
         assert client.get(path).status_code == 401
