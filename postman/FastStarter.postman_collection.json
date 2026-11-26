@@ -61,7 +61,7 @@
             "users"
           ]
         },
-        "description": "Return all registered users. Run `python manage.py init` first to create the demo users."
+        "description": "Requires an administrator session. In Postman, GET /api/auth/csrf, then POST /login with form fields username and password and the returned token in X-CSRF-Token. Keep the resulting cookies in the Postman cookie jar."
       },
       "event": [
         {

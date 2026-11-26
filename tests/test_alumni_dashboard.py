@@ -1,13 +1,15 @@
 import pytest
 from csrf_test_helpers import csrf_token_from_html
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.database import engine
 from app.main import app
 from app.models.listing import Listing
+from app.models.user import User
 from app.seed import seed
 from app.services import accounts, board_auth, boards
+from app.utilities.security import create_access_token
 
 ALUMNI_EMAIL = "alumni.verified@my.uwi.edu"
 ADMIN_EMAIL = "admin@uwi.edu"
@@ -82,7 +84,8 @@ def test_dashboard_shows_own_listings_with_statuses(client):
 
 def test_dashboard_hides_other_users_listings(client):
     admin_id = _user_id(ADMIN_EMAIL, "admin-dev")
-    other_id = _user_id(UNVERIFIED_EMAIL)
+    with Session(engine) as session:
+        other_id = session.exec(select(User.id).where(User.email == UNVERIFIED_EMAIL)).one()
     _add_listing(admin_id, title="Admin Secret Job", kind="job", status="published")
     _add_listing(
         other_id,
@@ -113,8 +116,10 @@ def test_dashboard_with_no_submissions_shows_message(client):
 
 
 def test_unverified_alumni_cannot_access_dashboard(client):
-    page = _login(client, UNVERIFIED_EMAIL).get("/app/dashboard")
-    assert page.status_code == 403
+    with Session(engine) as session:
+        user_id = session.exec(select(User.id).where(User.email == UNVERIFIED_EMAIL)).one()
+    client.cookies.set("access_token", create_access_token({"sub": str(user_id)}))
+    assert client.get("/app/dashboard").status_code == 401
 
 
 def test_list_by_author_returns_only_that_authors_listings(client):

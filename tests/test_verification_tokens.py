@@ -51,8 +51,20 @@ def test_tokens_are_distinct_and_user_must_exist(test_session):
     first = issue_verification_token(test_session, user_id, now=NOW)
     second = issue_verification_token(test_session, user_id, now=NOW)
     assert first != second
+    assert consume_verification_token(test_session, first, now=NOW) is None
+    assert consume_verification_token(test_session, second, now=NOW) == user_id
     with pytest.raises(ValueError, match="user not found"):
         issue_verification_token(test_session, user_id + 1, now=NOW)
+
+
+def test_rolling_back_replacement_restores_old_token(test_session):
+    user_id = add_user(test_session)
+    original = issue_verification_token(test_session, user_id, now=NOW)
+    test_session.commit()
+    issue_verification_token(test_session, user_id, now=NOW)
+    test_session.rollback()
+
+    assert consume_verification_token(test_session, original, now=NOW) == user_id
 
 
 def test_consumption_is_single_use_and_rollback_restores_token(test_session):
@@ -72,7 +84,6 @@ def test_consumption_is_single_use_and_rollback_restores_token(test_session):
 def test_expiry_boundary_and_naive_time_rejection(test_session):
     user_id = add_user(test_session)
     first = issue_verification_token(test_session, user_id, now=NOW)
-    second = issue_verification_token(test_session, user_id, now=NOW)
     test_session.commit()
     assert (
         consume_verification_token(
@@ -80,6 +91,8 @@ def test_expiry_boundary_and_naive_time_rejection(test_session):
         )
         == user_id
     )
+    second = issue_verification_token(test_session, user_id, now=NOW)
+    test_session.commit()
     assert (
         consume_verification_token(
             test_session, second, now=NOW + timedelta(minutes=30)
@@ -117,6 +130,36 @@ def test_concurrent_consumption_succeeds_once(tmp_path):
             results = list(executor.map(lambda _: consume(), range(2)))
         assert results.count(user_id) == 1
         assert results.count(None) == 1
+    finally:
+        engine.dispose()
+
+
+def test_concurrent_issuance_leaves_only_one_usable_token(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'token-issue-test.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    try:
+        with Session(engine) as session:
+            user_id = add_user(session)
+
+        barrier = Barrier(2)
+
+        def issue():
+            with Session(engine) as session:
+                barrier.wait(timeout=5)
+                token = issue_verification_token(session, user_id, now=NOW)
+                session.commit()
+                return token
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            tokens = list(executor.map(lambda _: issue(), range(2)))
+
+        with Session(engine) as session:
+            results = [consume_verification_token(session, token, now=NOW) for token in tokens]
+            assert results.count(user_id) == 1
+            assert results.count(None) == 1
     finally:
         engine.dispose()
 

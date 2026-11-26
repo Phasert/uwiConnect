@@ -10,17 +10,28 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.seed import seed
 from app.services.observer import LISTING_PUBLISHED
-from app.utilities.security import create_access_token
+from app.utilities.security import create_access_token, encrypt_password
 from tests.listing_auth_helpers import login
 
 OWNER_EMAIL = "alumni.verified@my.uwi.edu"
-OTHER_EMAIL = "alumni.pending@gmail.com"
+OTHER_EMAIL = "alumni.other@uwi.edu"
 PASSWORD = "alumni-dev"
 INBOX_FIELDS = {"id", "user_id", "event_type", "message", "created_at"}
 
 
 def setup_module() -> None:
     seed(reset=True)
+    with Session(engine) as session:
+        session.add(
+            User(
+                username=OTHER_EMAIL,
+                email=OTHER_EMAIL,
+                password=encrypt_password(PASSWORD),
+                role="alumni",
+                email_verified=1,
+            )
+        )
+        session.commit()
 
 
 client = TestClient(app)

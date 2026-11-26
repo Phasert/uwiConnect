@@ -67,7 +67,7 @@ def _read_batch(
     """Return account accessibility and one user-scoped batch of committed rows."""
     with Session(engine) as session:
         user = session.get(User, user_id)
-        if user is None or not is_account_accessible(user):
+        if user is None or not is_account_accessible(user) or not user.email_verified:
             return False, []
         rows = session.exec(
             select(Notification)

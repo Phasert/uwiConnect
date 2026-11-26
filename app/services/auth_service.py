@@ -1,7 +1,7 @@
 
 from app.repositories.user import UserRepository
 from app.schemas.user import RegularUserCreate
-from app.services.accounts import is_uwi_email, normalize_email
+from app.services.accounts import is_approved_registration_email, normalize_email
 from app.services.alumni_eligibility import clean_qualification, is_account_accessible
 from app.utilities.security import (
     create_access_token,
@@ -22,6 +22,7 @@ class AuthService:
             or not verify_password(
                 plaintext_password=password, encrypted_password=user.password
             )
+            or not user.email_verified
         ):
             return None
         access_token = create_access_token(data={"sub": f"{user.id}", "role": user.role})
@@ -37,7 +38,7 @@ class AuthService:
         department: str | None = None,
     ):
         normalized_email = normalize_email(email)
-        if not is_uwi_email(normalized_email):
+        if not is_approved_registration_email(normalized_email):
             raise ValueError("email must use an approved UWI domain")
 
         if self.user_repo.get_by_email(normalized_email):

@@ -260,8 +260,8 @@ def _publish_scheduled_campaign(campaign_id: int) -> bool:
     event = _campaign_event(campaign)
     observers_succeeded = _notification_publish_succeeded(event)
 
-    # notify() may catch observer persistence failures. A False result means
-    # we leave the campaign in sending for recovery instead of claiming success.
+    # Website notification failures leave the campaign in sending for recovery.
+    # Email observer failures are logged by the publisher but are best-effort.
     if not observers_succeeded:
         return False
 

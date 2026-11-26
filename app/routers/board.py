@@ -5,7 +5,15 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated, Any, NamedTuple
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session
@@ -15,6 +23,8 @@ from app.dependencies import AdminDep, AuthDep, get_csrf_protection
 from app.dependencies.auth import get_current_user
 from app.services import accounts, boards, campaigns, notification_stream, notifications
 from app.services import board_auth as auth
+from app.services.verification_resend import RESEND_MESSAGE, check_resend_rate_limit
+from app.utilities.security import access_token_cookie_kwargs, create_access_token
 
 router = APIRouter(tags=["uwi-connect"])
 
@@ -35,6 +45,10 @@ class RegisterBody(BaseModel):
 
 class VerifyEmailBody(BaseModel):
     token: str
+
+
+class ResendVerificationBody(BaseModel):
+    email: str = Field(max_length=320)
 
 
 class ListingBody(BaseModel):
@@ -68,15 +82,6 @@ class CampaignBody(BaseModel):
 
 class ScheduleCampaignBody(BaseModel):
     scheduled_at: str
-
-
-def _actor_id(x_user_id: str | None) -> int:
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-Id header required")
-    try:
-        return int(x_user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-User-Id must be int") from exc
 
 
 _MAX_SSE_CURSOR = 2**63 - 1
@@ -142,10 +147,17 @@ StreamIdentityDep = Annotated[_StreamIdentity, Depends(_stream_identity)]
 
 
 @router.post("/auth/login")
-def login(body: LoginBody) -> dict[str, Any]:
+def login(body: LoginBody, response: Response) -> dict[str, Any]:
     user = auth.login(body.email, body.password)
     if not user:
         raise HTTPException(status_code=401, detail="invalid credentials")
+    response.set_cookie(
+        key="access_token",
+        value=create_access_token(
+            data={"sub": str(user["id"]), "role": user["role"]}
+        ),
+        **access_token_cookie_kwargs(),
+    )
     return {"user": user}
 
 
@@ -177,6 +189,18 @@ def verify_email_by_link(token: str) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
+
+
+@router.post("/auth/resend-verification")
+def resend_verification(
+    body: ResendVerificationBody,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _csrf: None = Depends(get_csrf_protection),
+) -> dict[str, str]:
+    check_resend_rate_limit(request)
+    background_tasks.add_task(accounts.resend_verification_email, body.email)
+    return {"message": RESEND_MESSAGE}
 
 
 @router.post("/auth/verify-email")
@@ -359,10 +383,12 @@ def reject(
 
 @router.post("/admin/campaigns")
 def create_campaign(
-    body: CampaignBody, x_user_id: str | None = Header(default=None)
+    body: CampaignBody,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
     result = campaigns.create_draft(
-        _actor_id(x_user_id), subject=body.subject, body=body.body
+        admin.id, subject=body.subject, body=body.body
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
@@ -370,18 +396,17 @@ def create_campaign(
 
 
 @router.get("/admin/campaigns")
-def list_campaigns(x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    actor = auth.get_user(_actor_id(x_user_id))
-    if not actor or actor["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin only")
+def list_campaigns(admin: AdminDep) -> dict[str, Any]:
     return {"campaigns": campaigns.list_campaigns()}
 
 
 @router.post("/admin/campaigns/{campaign_id}/send")
 def send_campaign(
-    campaign_id: int, x_user_id: str | None = Header(default=None)
+    campaign_id: int,
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
-    result = campaigns.send_campaign(_actor_id(x_user_id), campaign_id)
+    result = campaigns.send_campaign(admin.id, campaign_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
@@ -391,10 +416,11 @@ def send_campaign(
 def schedule_campaign(
     campaign_id: int,
     body: ScheduleCampaignBody,
-    x_user_id: str | None = Header(default=None),
+    admin: AdminDep,
+    _csrf: None = Depends(get_csrf_protection),
 ) -> dict[str, Any]:
     result = campaigns.schedule_campaign(
-        _actor_id(x_user_id),
+        admin.id,
         campaign_id,
         scheduled_at=body.scheduled_at,
     )

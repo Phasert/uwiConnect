@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 
 from app.database import engine
 from app.main import app
+from app.models.notification import Notification
 from app.models.user import User
 from app.seed import seed
 from app.services.observer import (
@@ -90,11 +91,24 @@ def _inbox(user_id: int) -> list:
     return r.json()["notifications"]
 
 
+def _unverified_messages() -> list[str]:
+    with Session(engine) as session:
+        user = session.exec(
+            select(User).where(User.email == "alumni.pending@gmail.com")
+        ).one()
+        return [
+            row.message
+            for row in session.exec(
+                select(Notification).where(Notification.user_id == user.id)
+            ).all()
+        ]
+
+
 def _create_campaign(user_id: int, subject: str, body: str) -> dict:
     r = client.post(
         "/api/admin/campaigns",
         json={"subject": subject, "body": body},
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
     assert r.status_code == 200
     return r.json()
@@ -103,7 +117,7 @@ def _create_campaign(user_id: int, subject: str, body: str) -> dict:
 def _send_campaign(user_id: int, campaign_id: int):
     return client.post(
         f"/api/admin/campaigns/{campaign_id}/send",
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
     )
 
 
@@ -111,7 +125,26 @@ def _schedule_campaign(user_id: int, campaign_id: int, scheduled_at: str):
     return client.post(
         f"/api/admin/campaigns/{campaign_id}/schedule",
         json={"scheduled_at": scheduled_at},
-        headers={"X-User-Id": str(user_id)},
+        headers=auth_headers(client, user_id),
+    )
+
+
+def test_campaign_api_does_not_trust_x_user_id():
+    unauthenticated = TestClient(app)
+    csrf_token = unauthenticated.get("/api/auth/csrf").json()["csrf_token"]
+    headers = {
+        "X-User-Id": "1",
+        "X-CSRF-Token": csrf_token,
+    }
+
+    assert unauthenticated.get("/api/admin/campaigns", headers=headers).status_code == 401
+    assert (
+        unauthenticated.post(
+            "/api/admin/campaigns",
+            json={"subject": "Forged", "body": "Must not create"},
+            headers=headers,
+        ).status_code
+        == 401
     )
 
 
@@ -203,7 +236,6 @@ def test_repeated_and_invalid_publish_attempts_emit_no_extra_events(events):
 
 def test_publishing_via_api_notifies_verified_alumni_only():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
-    unverified = _login("alumni.pending@gmail.com", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
 
     for kind in ("job", "event"):
@@ -225,7 +257,7 @@ def test_publishing_via_api_notifies_verified_alumni_only():
             "message",
             "created_at",
         }
-        assert not any(title in row["message"] for row in _inbox(unverified["id"]))
+        assert not any(title in message for message in _unverified_messages())
         assert not any(title in row["message"] for row in _inbox(admin["id"]))
 
 
@@ -264,7 +296,6 @@ def test_pending_and_rejected_listings_create_no_notifications():
 
 def test_sending_campaign_via_api_notifies_verified_alumni_only():
     alum = _login("alumni.verified@my.uwi.edu", "alumni-dev")
-    unverified = _login("alumni.pending@gmail.com", "alumni-dev")
     admin = _login("admin@uwi.edu", "admin-dev")
     subject = "API Campaign Notify"
     body = "A new alumni opportunity."
@@ -277,7 +308,7 @@ def test_sending_campaign_via_api_notifies_verified_alumni_only():
     assert len(rows) == 1
     assert rows[0]["event_type"] == CAMPAIGN_SENT
     assert rows[0]["message"] == f"Campaign: {subject} - {body}"
-    assert not any(subject in row["message"] for row in _inbox(unverified["id"]))
+    assert not any(subject in message for message in _unverified_messages())
     assert not any(subject in row["message"] for row in _inbox(admin["id"]))
 
 

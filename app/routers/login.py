@@ -1,10 +1,14 @@
-from fastapi import Form, Request, status
+from typing import Annotated
+
+from fastapi import BackgroundTasks, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.dependencies import SessionDep
 from app.dependencies.csrf import rotate_csrf_token
 from app.repositories.user import UserRepository
+from app.services.accounts import resend_verification_email
 from app.services.auth_service import AuthService
+from app.services.verification_resend import RESEND_MESSAGE, check_resend_rate_limit
 from app.utilities.flash import flash
 from app.utilities.security import access_token_cookie_kwargs
 
@@ -49,3 +53,18 @@ async def login_action_ajax(
         **access_token_cookie_kwargs(),
     )
     return response
+
+
+@router.post("/resend-verification")
+async def resend_verification_action(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    email: Annotated[str, Form(max_length=320)],
+):
+    check_resend_rate_limit(request)
+    background_tasks.add_task(resend_verification_email, email)
+    flash(request, RESEND_MESSAGE)
+    return RedirectResponse(
+        url=request.url_for("login_view"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )

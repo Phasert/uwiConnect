@@ -37,6 +37,7 @@ def login(email: str, password: str) -> dict[str, Any] | None:
             user is None
             or not is_account_accessible(user)
             or not verify_password(password, user.password)
+            or not user.email_verified
         ):
             return None
         return public_user(user)

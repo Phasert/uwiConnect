@@ -43,7 +43,7 @@ async def get_current_user(request: Request, db: SessionDep) -> User:
 
     repo = UserRepository(db)
     user = repo.get_by_id(user_id)
-    if user is None or not is_account_accessible(user):
+    if user is None or not is_account_accessible(user) or not user.email_verified:
         raise credentials_exception
     return user
 
