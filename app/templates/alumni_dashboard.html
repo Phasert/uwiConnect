@@ -52,46 +52,29 @@ data-listing="{{ {
   <a class="secondary" href="{{ url_for('user_home_view') }}">Browse boards</a>
 </div>
 
+<div id="listingActionMessage" class="alert alert-dismissible d-none" data-csrf-token="{{ get_csrf_token(request)|e }}">
+  <span id="listingActionText" role="status"></span>
+  <button type="button" class="btn-close" id="dismissListingMessage" aria-label="Close message"></button>
+</div>
+
 {% if listings %}
 <div class="table-responsive">
-  <table class="table table-striped align-middle">
+  <table class="table table-striped align-middle submissions-table">
     <caption class="visually-hidden">Your submitted listings and review statuses</caption>
     <thead>
       <tr>
-        <th scope="col">Type</th>
         <th scope="col">Listing</th>
         <th scope="col">Status</th>
         <th scope="col">Submitted</th>
-        <th scope="col">Rejection reason</th>
         <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for listing in listings %}
       <tr>
-        <td><span class="badge {% if listing.kind == 'event' %}bg-info text-dark{% else %}bg-primary{% endif %}">{{ listing.kind|capitalize|e }}</span></td>
-        <td>
-          <div class="fw-semibold">{{ listing.title|e }}</div>
-          {% if listing.body %}
-          <div class="small text-body-secondary text-break">{{ listing.body|e }}</div>
-          {% endif %}
-          <ul class="list-unstyled small mb-0 mt-1">
-            {% if listing.location %}
-            <li><span class="text-body-secondary">Location:</span> {{ listing.location|e }}</li>
-            {% endif %}
-            {% if listing.kind == 'job' %}
-              {% if listing.company_name %}
-              <li><span class="text-body-secondary">Organisation:</span> {{ listing.company_name|e }}</li>
-              {% endif %}
-              {% if listing.application_deadline %}
-              <li><span class="text-body-secondary">Apply by:</span> <time datetime="{{ listing.application_deadline|e }}">{{ friendly_date(listing.application_deadline) }}</time></li>
-              {% endif %}
-            {% else %}
-              {% if listing.event_date %}
-              <li><span class="text-body-secondary">When:</span> <time datetime="{{ listing.event_date|e }}{% if listing.event_time %}T{{ listing.event_time|e }}{% endif %}">{{ friendly_date(listing.event_date) }}{% if listing.event_time %} at {{ friendly_time(listing.event_time) }}{% endif %}</time></li>
-              {% endif %}
-            {% endif %}
-          </ul>
+        <td class="submission-description">
+          <div class="fw-semibold mb-1">{{ listing.title|e }}</div>
+          <span class="badge {% if listing.kind == 'event' %}bg-info text-dark{% else %}bg-primary{% endif %}">{{ listing.kind|capitalize|e }}</span>
         </td>
         <td>
           {% if listing.status == 'published' %}
@@ -104,7 +87,8 @@ data-listing="{{ {
           <span class="badge bg-secondary">{{ listing.status | capitalize | e }}</span>
           {% endif %}
         </td>
-        <td>
+        <td class="text-nowrap">
+          <span class="d-md-none text-body-secondary">Submitted </span>
           {% if listing.created_at %}
           <time datetime="{{ listing.created_at|e }}">{{ friendly_date(listing.created_at) }}</time>
           {% else %}
@@ -112,38 +96,69 @@ data-listing="{{ {
           {% endif %}
         </td>
         <td>
-          {% if listing.status == 'rejected' %}
-            {% if listing.rejection_reason is defined and listing.rejection_reason %}
-            {{ listing.rejection_reason|e }}
-            {% else %}
-            No reason provided.
-            {% endif %}
-          {% else %}
-          <span class="text-muted">&mdash;</span>
-          {% endif %}
-        </td>
-        <td>
+          <div class="submission-actions d-flex flex-wrap flex-lg-nowrap align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-view-details="details-{{ loop.index }}" aria-haspopup="dialog">View details</button>
           {% if listing.deletion_requested is defined and listing.deletion_requested %}
           <span class="badge bg-info text-dark">Deletion requested — awaiting admin review</span>
           {% elif listing.revision_requested is defined and listing.revision_requested %}
           <span class="badge bg-info text-dark">Revision requested — awaiting admin review</span>
           {% else %}
-          <div class="d-flex flex-column align-items-start gap-1">
             {% if listing.status == 'pending' or listing.status == 'rejected' %}
             <button type="button" class="btn btn-sm btn-outline-primary" data-edit-id="{{ listing.id|e }}" {{ edit_details(listing) }} aria-controls="editListingPanel" aria-expanded="false">Edit</button>
             {% endif %}
             {% if listing.status == 'published' %}
-            <button type="button" class="btn btn-sm btn-outline-primary" data-revise-id="{{ listing.id|e }}" {{ edit_details(listing) }} aria-controls="editListingPanel" aria-expanded="false">Request revision</button>
+            <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-revise-id="{{ listing.id|e }}" {{ edit_details(listing) }} aria-controls="editListingPanel" aria-expanded="false">Request revision</button>
             {% endif %}
-            <button type="button" class="btn btn-sm btn-outline-danger" data-delete-id="{{ listing.id|e }}">Request deletion</button>
-          </div>
+            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" data-delete-id="{{ listing.id|e }}">Request deletion</button>
           {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% for listing in listings %}
+<dialog id="details-{{ loop.index }}" class="submission-details border-0 rounded-3 shadow p-4"
+        aria-labelledby="details-title-{{ loop.index }}">
+  <h2 id="details-title-{{ loop.index }}" class="h5">{{ listing.title|e }}</h2>
+  {% if listing.body %}
+  <h3 class="h6 mt-3">Description</h3>
+  <p class="submission-description-text">{{ listing.body|e }}</p>
+  {% endif %}
+  <dl class="row mb-3">
+    {% for field, label in [
+      ('location', 'Location'),
+      ('category', 'Category'),
+      ('company_name', 'Organisation'),
+      ('faculty', 'Faculty'),
+      ('department', 'Department'),
+      ('application_instructions', 'How to apply'),
+      ('application_deadline', 'Application deadline'),
+      ('event_date', 'Event date'),
+      ('event_time', 'Event time'),
+      ('registration_information', 'Registration'),
+      ('rejection_reason', 'Rejection reason'),
+    ] %}
+      {% if listing[field] %}
+      <dt class="col-sm-4">{{ label }}</dt>
+      <dd class="col-sm-8 submission-description-text">
+        {%- if field in ('application_deadline', 'event_date') -%}
+          <time datetime="{{ listing[field]|e }}">{{ friendly_date(listing[field]) }}</time>
+        {%- elif field == 'event_time' -%}
+          {{ friendly_time(listing[field]) }}
+        {%- else -%}
+          {{ listing[field]|e }}
+        {%- endif -%}
+      </dd>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  <form method="dialog" class="text-end">
+    <button type="submit" class="btn btn-primary" autofocus>Close</button>
+  </form>
+</dialog>
+{% endfor %}
 {% else %}
 <div class="alert alert-info" role="status">
   <h2 class="h6">You have not submitted any listings yet.</h2>
@@ -151,12 +166,10 @@ data-listing="{{ {
 </div>
 {% endif %}
 
-<div id="listingActionMessage" class="alert d-none" role="alert" aria-live="polite" data-csrf-token="{{ get_csrf_token(request)|e }}"></div>
-
-<div id="editListingPanel" class="card mt-4 d-none" aria-labelledby="editListingHeading">
-  <div class="card-body">
+<dialog id="editListingPanel" class="submission-details border-0 rounded-3 shadow p-4" aria-labelledby="editListingHeading">
     <h2 class="h5" id="editListingHeading">Edit listing</h2>
     <p class="text-body-secondary small">Update the listing details, then save your changes or send them for review.</p>
+    <div id="editListingError" class="alert alert-danger d-none" role="alert"></div>
     <form id="editListingForm">
       <div class="row g-3">
         <div class="col-12 col-md-4">
@@ -194,17 +207,22 @@ data-listing="{{ {
             <label class="form-label" for="editInstructions">Application instructions or link</label>
             <textarea class="form-control" id="editInstructions" name="application_instructions" rows="3" required></textarea>
           </div>
-          <div class="col-12 col-md-6">
+          <div class="col-12">
             <label class="form-label" for="editDeadline">Application deadline (optional; YYYY-MM-DD)</label>
             <input class="form-control" id="editDeadline" name="application_deadline" placeholder="YYYY-MM-DD" />
           </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="editFaculty">Faculty (faculty or department required)</label>
-            <input class="form-control" id="editFaculty" name="faculty" />
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="editDepartment">Department (faculty or department required)</label>
-            <input class="form-control" id="editDepartment" name="department" />
+          <div class="col-12">
+            <div id="editQualificationHelp" class="form-text mb-2">Faculty or department required.</div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="editFaculty">Faculty</label>
+                <input class="form-control" id="editFaculty" name="faculty" aria-describedby="editQualificationHelp" />
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="editDepartment">Department</label>
+                <input class="form-control" id="editDepartment" name="department" aria-describedby="editQualificationHelp" />
+              </div>
+            </div>
           </div>
         </div>
       </fieldset>
@@ -230,21 +248,30 @@ data-listing="{{ {
         <button type="button" class="btn btn-outline-secondary" id="cancelEdit">Cancel</button>
       </div>
     </form>
-  </div>
-</div>
+</dialog>
 
-<div class="app-actions mt-4">
-  <a class="secondary" href="{{ url_for('user_home_view') }}">Back to alumni boards</a>
-</div>
 {% endblock %}
 
 {% block subpage_scripts %}
 <script>
 (function () {
+  document.querySelectorAll('[data-view-details]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.getElementById(button.dataset.viewDetails).showModal();
+    });
+  });
+
   const message = document.getElementById('listingActionMessage');
+  const messageText = document.getElementById('listingActionText');
+  document.getElementById('dismissListingMessage').addEventListener('click', function () {
+    message.classList.add('d-none');
+    messageText.textContent = '';
+  });
   const panel = document.getElementById('editListingPanel');
+  const editError = document.getElementById('editListingError');
   const heading = document.getElementById('editListingHeading');
   const submitButton = document.getElementById('editSubmitButton');
+  const cancelButton = document.getElementById('cancelEdit');
   const form = document.getElementById('editListingForm');
   const kindInput = document.getElementById('editKind');
   const titleInput = document.getElementById('editTitle');
@@ -264,8 +291,8 @@ data-listing="{{ {
   let editTrigger = null;
 
   function showMessage(text, type) {
-    message.textContent = text;
-    message.className = 'alert alert-' + type;
+    messageText.textContent = text;
+    message.className = 'alert alert-dismissible alert-' + type;
   }
 
   function jsonHeaders() {
@@ -310,7 +337,41 @@ data-listing="{{ {
     'deletion already requested': 'A deletion request is already awaiting review.'
   };
 
-  async function errorMessage(response, fallback) {
+  function clearFieldError(input) {
+    input.classList.remove('is-invalid');
+    input.removeAttribute('aria-invalid');
+    if (input.name === 'faculty' || input.name === 'department') {
+      input.setAttribute('aria-describedby', 'editQualificationHelp');
+    } else {
+      input.removeAttribute('aria-describedby');
+    }
+    document.getElementById(input.id + '-error')?.remove();
+  }
+
+  function showFieldError(input, text) {
+    clearFieldError(input);
+    const feedback = document.createElement('div');
+    feedback.id = input.id + '-error';
+    feedback.className = 'invalid-feedback d-block';
+    feedback.textContent = text;
+    input.classList.add('is-invalid');
+    input.setAttribute('aria-invalid', 'true');
+    const help = input.getAttribute('aria-describedby');
+    input.setAttribute('aria-describedby', help ? help + ' ' + feedback.id : feedback.id);
+    input.after(feedback);
+  }
+
+  function clearEditErrors() {
+    form.querySelectorAll('.is-invalid').forEach(clearFieldError);
+    editError.classList.add('d-none');
+  }
+
+  function showEditError(text) {
+    editError.textContent = text;
+    editError.classList.remove('d-none');
+  }
+
+  async function errorMessage(response, fallback, editing) {
     let detail;
     try {
       const data = await response.json();
@@ -331,25 +392,37 @@ data-listing="{{ {
     }
     if (response.status === 400 && typeof detail === 'string' &&
         Object.prototype.hasOwnProperty.call(friendlyErrors, detail)) {
+      if (editing) {
+        const field = detail.split(' ')[0];
+        const input = field === 'kind' ? kindInput : form.elements.namedItem(field);
+        if (input && !input.matches(':disabled')) {
+          showFieldError(input, friendlyErrors[detail]);
+          input.focus();
+          return '';
+        }
+      }
       return friendlyErrors[detail];
     }
     return 'Unable to complete this action. Please try again.';
   }
 
-  async function sendAction(url, options, successMessage, fallback) {
+  async function sendAction(url, options, successMessage, fallback, editing = false) {
+    const showError = editing ? showEditError : text => showMessage(text, 'danger');
     let response;
     try {
       response = await fetch(url, Object.assign({ credentials: 'same-origin' }, options));
     } catch (error) {
-      showMessage(fallback, 'danger');
+      showError(fallback);
       return false;
     }
     if (response.ok) {
+      if (editing) panel.close();
       sessionStorage.setItem('listingActionMessage', successMessage);
       window.location.reload();
       return true;
     }
-    showMessage(await errorMessage(response, fallback), 'danger');
+    const error = await errorMessage(response, fallback, editing);
+    if (error) showError(error);
     return false;
   }
 
@@ -379,16 +452,34 @@ data-listing="{{ {
       syncEditFields();
       heading.textContent = editMode === 'revision' ? 'Request a revision' : 'Edit listing';
       submitButton.textContent = editMode === 'revision' ? 'Send revision request' : 'Save changes';
-      panel.classList.remove('d-none');
-      message.className = 'alert d-none';
+      clearEditErrors();
+      panel.showModal();
       titleInput.focus();
     });
   });
 
-  kindInput.addEventListener('change', syncEditFields);
+  kindInput.addEventListener('change', function () {
+    clearEditErrors();
+    syncEditFields();
+  });
 
-  document.getElementById('cancelEdit').addEventListener('click', function () {
-    panel.classList.add('d-none');
+  form.addEventListener('invalid', function (event) {
+    showFieldError(event.target, event.target.validationMessage);
+  }, true);
+
+  form.addEventListener('input', function (event) {
+    if (event.target.classList.contains('is-invalid')) clearFieldError(event.target);
+  });
+
+  cancelButton.addEventListener('click', function () {
+    panel.close();
+  });
+
+  panel.addEventListener('cancel', function (event) {
+    if (submitButton.disabled) event.preventDefault();
+  });
+
+  panel.addEventListener('close', function () {
     editId = null;
     if (editTrigger) {
       editTrigger.setAttribute('aria-expanded', 'false');
@@ -398,10 +489,13 @@ data-listing="{{ {
 
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
+    clearEditErrors();
     const title = titleInput.value.trim();
     const body = bodyInput.value.trim();
     if (!title || !body) {
-      showMessage('Title and description are required.', 'danger');
+      if (!title) showFieldError(titleInput, 'Please enter a title.');
+      if (!body) showFieldError(bodyInput, 'Please enter a description.');
+      (title ? bodyInput : titleInput).focus();
       return;
     }
     const payload = { kind: kindInput.value, title: title, body: body };
@@ -423,7 +517,14 @@ data-listing="{{ {
     const successMessage = isRevision
       ? 'Revision request sent. The published listing stays unchanged until an admin approves it.'
       : 'Listing updated and sent for admin review.';
-    await sendAction(url, options, successMessage, 'The listing service may be unavailable. Please try again.');
+    submitButton.disabled = true;
+    cancelButton.disabled = true;
+    try {
+      await sendAction(url, options, successMessage, 'The listing service may be unavailable. Please try again.', true);
+    } finally {
+      submitButton.disabled = false;
+      cancelButton.disabled = false;
+    }
   });
 
   document.querySelectorAll('[data-delete-id]').forEach(function (button) {

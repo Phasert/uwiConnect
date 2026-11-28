@@ -288,7 +288,8 @@ def test_dashboard_contains_agreed_api_contract_and_feedback(client, monkeypatch
     assert "/deletion-request" in page.text
     assert "method: isRevision ? 'POST' : 'PUT'" in page.text
     assert "method: 'POST'" in page.text
-    assert "Title and description are required." in page.text
+    assert "Please enter a title." in page.text
+    assert "Please enter a description." in page.text
     assert "Listing updated and sent for admin review." in page.text
     assert "Revision request sent. The published listing stays unchanged" in page.text
     assert "The listing stays visible until an admin approves it." in page.text
@@ -316,7 +317,7 @@ def test_successful_actions_refresh_and_preserve_feedback(client, monkeypatch):
     assert (
         "sessionStorage.setItem('listingActionMessage', successMessage)" in page.text
     )
-    assert "showMessage(await errorMessage(response, fallback), 'danger')" in page.text
+    assert "if (editing) panel.close();" in page.text
     assert "'X-CSRF-Token': csrfToken" in page.text
     assert "credentials: 'same-origin'" in page.text
     assert "Your session has expired. Please sign in again." in page.text
@@ -351,12 +352,21 @@ function element(dataset = {}) {
     },
     addEventListener(name, callback) { this.listeners[name] = callback; },
     setAttribute() {},
+    getAttribute() { return null; },
+    removeAttribute() {},
+    matches() { return false; },
+    querySelectorAll() { return Object.values(fields).filter(field => field.classList.contains('is-invalid')); },
+    after(feedback) { this.feedback = feedback; ids[feedback.id] = feedback; },
+    remove() { delete ids[this.id]; },
+    showModal() { this.open = true; },
+    close() { this.open = false; this.listeners.close?.(); },
     focus() {}
   };
 }
 const ids = {};
 [
-  'listingActionMessage', 'editListingPanel', 'editListingHeading',
+  'listingActionMessage', 'listingActionText', 'dismissListingMessage',
+  'editListingPanel', 'editListingHeading', 'editListingError',
   'editSubmitButton', 'editListingForm', 'editKind', 'editTitle', 'editBody',
   'editJobFields', 'editEventFields', 'cancelEdit'
 ].forEach(id => ids[id] = element());
@@ -366,7 +376,7 @@ const fields = {};
   'location', 'category', 'company_name', 'application_instructions',
   'application_deadline', 'faculty', 'department', 'event_date', 'event_time',
   'registration_information'
-].forEach(name => fields[name] = element());
+].forEach(name => fields[name] = Object.assign(element(), { id: name }));
 ids.editListingForm.elements = { namedItem: name => fields[name] };
 
 const job = element({
@@ -388,6 +398,7 @@ const event = element({
   })
 });
 global.document = {
+  createElement: () => element(),
   getElementById: id => ids[id],
   querySelectorAll: selector => selector === '[data-edit-id], [data-revise-id]'
     ? [job, event] : []
@@ -412,6 +423,7 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
 
 (async () => {
   job.listeners.click();
+  assert.strictEqual(ids.editListingPanel.open, true);
   assert.strictEqual(fields.company_name.value, 'UWI Labs');
   assert.strictEqual(fields.application_deadline.value, '2099-12-01');
   assert.strictEqual(fields.department.value, 'Computing');
@@ -419,7 +431,8 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
   assert.strictEqual(ids.editEventFields.disabled, true);
   fields.company_name.value = 'Changed company';
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent, 'Please enter the company name.');
+  assert.strictEqual(fields.company_name.feedback.textContent, 'Please enter the company name.');
+  assert.strictEqual(ids.editListingPanel.open, true);
   assert.strictEqual(fields.company_name.value, 'Changed company');
   assert.strictEqual(fields.application_deadline.value, '2099-12-01');
   assert.strictEqual(calls[0].url, '/api/boards/listings/4');
@@ -434,7 +447,7 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
   response = { status: 400, ok: false,
     json: async () => ({ detail: 'application_instructions is required for job listings' }) };
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent, 'Please provide application instructions.');
+  assert.strictEqual(fields.application_instructions.feedback.textContent, 'Please provide application instructions.');
 
   ids.editKind.value = 'event';
   ids.editKind.listeners.change();
@@ -444,6 +457,8 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
   ids.editKind.listeners.change();
   assert.strictEqual(fields.company_name.value, 'Changed company');
 
+  ids.cancelEdit.listeners.click();
+  assert.strictEqual(ids.editListingPanel.open, false);
   event.listeners.click();
   assert.strictEqual(fields.event_date.value, '2099-10-12');
   assert.strictEqual(fields.event_time.value, '13:45:30');
@@ -453,7 +468,7 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
   response = { status: 400, ok: false,
     json: async () => ({ detail: 'event_time must use HH:MM or HH:MM:SS' }) };
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent, 'Please enter a valid event time.');
+  assert.strictEqual(fields.event_time.feedback.textContent, 'Please enter a valid event time.');
   assert.strictEqual(calls[2].url, '/api/boards/listings/8/revision-request');
   assert.strictEqual(calls[2].options.method, 'POST');
   assert.deepStrictEqual(calls[2].payload, {
@@ -464,26 +479,30 @@ const submit = () => ids.editListingForm.listeners.submit({ preventDefault() {} 
   response = { status: 400, ok: false,
     json: async () => ({ detail: 'event_date is required for event listings' }) };
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent, 'Please enter the event date.');
+  assert.strictEqual(fields.event_date.feedback.textContent, 'Please enter the event date.');
   response = { status: 500, ok: false,
     json: async () => ({ detail: 'private technical exception' }) };
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent,
+  assert.strictEqual(ids.editListingError.textContent,
     'Unable to complete this action. Please try again.');
   assert.strictEqual(fields.registration_information.value,
     '</script><img src=x onerror=alert(1)> & "quotes"');
   response = { status: 403, ok: false, json: async () => ({ detail: 'CSRF failed' }) };
   await submit();
-  assert.strictEqual(ids.listingActionMessage.textContent,
+  assert.strictEqual(ids.editListingError.textContent,
     'Your security token expired. Reload the page and try again.');
   response = { status: 200, ok: true };
   await submit();
   assert.strictEqual(reloads, 1);
+  assert.strictEqual(ids.editListingPanel.open, false);
   assert.ok(saved.listingActionMessage.startsWith('Revision request sent.'));
   job.listeners.click();
   await submit();
   assert.strictEqual(reloads, 2);
   assert.strictEqual(saved.listingActionMessage, 'Listing updated and sent for admin review.');
+  ids.dismissListingMessage.listeners.click();
+  assert.ok(ids.listingActionMessage.classList.contains('d-none'));
+  assert.strictEqual(ids.listingActionText.textContent, '');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
     result = subprocess.run(
