@@ -36,6 +36,19 @@
         </div>
     </div>
 
+    <dialog id="confirmation-dialog" class="border-0 rounded-3 shadow p-0 w-100"
+        style="max-width: min(28rem, calc(100% - 2rem))"
+        aria-labelledby="confirmation-title" aria-describedby="confirmation-message">
+        <form method="dialog" class="p-4">
+            <h2 id="confirmation-title" class="h5"></h2>
+            <p id="confirmation-message" class="mb-4"></p>
+            <div class="d-flex flex-wrap justify-content-end gap-2">
+                <button type="submit" class="btn btn-outline-secondary" value="cancel" autofocus>Cancel</button>
+                <button type="submit" class="btn btn-danger" value="confirm" id="confirmation-action"></button>
+            </div>
+        </form>
+    </dialog>
+    <script src="{{ url_for('static', path='js/confirmation.js') }}" defer></script>
     {% block external_js %}{% endblock %}
 </body>
 
