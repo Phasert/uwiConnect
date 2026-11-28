@@ -773,10 +773,70 @@ a {
 .app-main {
   flex: 1;
   padding: clamp(1.25rem, 3vw, 2rem);
-  max-width: 920px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   animation: hero-rise 0.45s ease-out both;
+}
+
+.submissions-table .submission-description {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.submission-details {
+  width: min(36rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  color: var(--brand-ink);
+  overflow-wrap: anywhere;
+}
+
+.submission-description-text {
+  white-space: pre-wrap;
+}
+
+.submission-actions .badge {
+  white-space: normal;
+  text-align: left;
+}
+
+@media (max-width: 767.98px) {
+  .submissions-table,
+  .submissions-table tbody {
+    display: block;
+  }
+
+  .submissions-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .submissions-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.875rem;
+    border: 1px solid var(--brand-border);
+    border-radius: 0.75rem;
+    background: white;
+  }
+
+  .submissions-table > tbody > tr > td {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .submissions-table td:last-child {
+    width: 100%;
+  }
+
 }
 
 .app-main h1 {
