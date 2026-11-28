@@ -10,20 +10,6 @@ from app.utilities.flash import flash
 from . import router, templates
 
 
-def _dashboard_response(
-    request: Request,
-    user,
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="alumni_dashboard.html",
-        context={
-            "user": user,
-            "listings": boards.list_by_author(user.id),
-        },
-    )
-
-
 def _submission_form_response(
     request: Request,
     user,
@@ -67,8 +53,31 @@ async def user_home_view(
 async def user_dashboard_view(
     request: Request,
     user: AlumniDep,
+    q: str = "",
+    kind: str = "",
+    listing_status: str = "",
 ):
-    return _dashboard_response(request, user)
+    keyword = q.strip().casefold()
+    listings = [
+        listing for listing in boards.list_by_author(user.id)
+        if (not kind or listing["kind"] == kind)
+        and (not listing_status or listing["status"] == listing_status)
+        and (not keyword or any(
+            keyword in (listing.get(field) or "").casefold()
+            for field in ("title", "body")
+        ))
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="alumni_dashboard.html",
+        context={
+            "user": user,
+            "listings": listings,
+            "q": q,
+            "kind": kind,
+            "listing_status": listing_status,
+        },
+    )
 
 
 @router.get("/app/dashboard/submit", response_class=HTMLResponse)

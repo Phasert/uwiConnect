@@ -57,6 +57,34 @@ data-listing="{{ {
   <button type="button" class="btn-close" id="dismissListingMessage" aria-label="Close message"></button>
 </div>
 
+<form action="{{ url_for('user_dashboard_view') }}" method="get" class="row g-2 mb-4 align-items-end">
+  <div class="col-12 col-lg-5">
+    <input class="form-control" type="search" name="q" value="{{ q|default('')|e }}"
+           placeholder="Search titles and descriptions" aria-label="Search my submissions">
+  </div>
+  <div class="col-6 col-lg-2">
+    <select class="form-select" name="kind" aria-label="Listing type">
+      <option value="">All types</option>
+      <option value="job"{% if kind == 'job' %} selected{% endif %}>Jobs</option>
+      <option value="event"{% if kind == 'event' %} selected{% endif %}>Events</option>
+    </select>
+  </div>
+  <div class="col-6 col-lg-2">
+    <select class="form-select" name="listing_status" aria-label="Listing status">
+      <option value="">All statuses</option>
+      {% for value in ('published', 'pending', 'rejected') %}
+      <option value="{{ value }}"{% if listing_status == value %} selected{% endif %}>{{ value|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12 col-lg-auto d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Search</button>
+    {% if q or kind or listing_status %}
+    <a class="btn btn-outline-primary" href="{{ url_for('user_dashboard_view') }}">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
 {% if listings %}
 <div class="table-responsive">
   <table class="table table-striped align-middle submissions-table">
@@ -161,8 +189,12 @@ data-listing="{{ {
 {% endfor %}
 {% else %}
 <div class="alert alert-info" role="status">
+  {% if q or kind or listing_status %}
+  <h2 class="h6 mb-0">No submissions match your search.</h2>
+  {% else %}
   <h2 class="h6">You have not submitted any listings yet.</h2>
   <p class="mb-0">When you submit a job or event, its review status will appear here.</p>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -216,11 +248,11 @@ data-listing="{{ {
             <div class="row g-3">
               <div class="col-6">
                 <label class="form-label" for="editFaculty">Faculty</label>
-                <input class="form-control" id="editFaculty" name="faculty" aria-describedby="editQualificationHelp" />
+                {{ faculty_select('editFaculty', 'editDepartment', described_by='editQualificationHelp', allow_all=true) }}
               </div>
               <div class="col-6">
                 <label class="form-label" for="editDepartment">Department</label>
-                <input class="form-control" id="editDepartment" name="department" aria-describedby="editQualificationHelp" />
+                {{ department_select('editDepartment', described_by='editQualificationHelp') }}
               </div>
             </div>
           </div>
@@ -449,6 +481,9 @@ data-listing="{{ {
       detailFields.forEach(function (field) {
         form.elements.namedItem(field).value = listing[field] || '';
       });
+      if (typeof setQualificationSelection === 'function') {
+        setQualificationSelection(form.elements.namedItem('faculty'), listing.faculty || '', listing.department || '');
+      }
       syncEditFields();
       heading.textContent = editMode === 'revision' ? 'Request a revision' : 'Edit listing';
       submitButton.textContent = editMode === 'revision' ? 'Send revision request' : 'Save changes';
@@ -548,3 +583,4 @@ data-listing="{{ {
 })();
 </script>
 {% endblock %}
+{% from 'partials/qualification_fields.html' import faculty_select, department_select %}

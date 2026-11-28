@@ -49,6 +49,8 @@ def _clean_listing_data(data: dict[str, Any]) -> dict[str, Any]:
         value = cleaned.get(field)
         if isinstance(value, str):
             cleaned[field] = value.strip() or None
+    if cleaned.get("faculty") == "All faculties":
+        cleaned["department"] = None
     return cleaned
 
 

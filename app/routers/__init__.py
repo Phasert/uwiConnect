@@ -6,12 +6,14 @@ from jinja2 import Environment, FileSystemLoader
 
 from app.config import get_settings
 from app.dependencies.csrf import get_csrf_protection, get_csrf_token
+from app.services.qualification_options import qualification_options
 from app.utilities.flash import get_flashed_messages
 
 
 template_env = Environment(loader = FileSystemLoader("app/templates",), )
 template_env.globals['get_flashed_messages'] = get_flashed_messages
 template_env.globals['get_csrf_token'] = get_csrf_token
+template_env.globals['qualification_options'] = qualification_options
 templates = Jinja2Templates(env=template_env)
 static_files = StaticFiles(directory="app/static")
 

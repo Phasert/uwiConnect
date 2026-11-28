@@ -1,0 +1,28 @@
+{% macro faculty_select(id, department_id, faculty='', error=false, described_by='', allow_all=false) %}
+  {% set options = qualification_options() if qualification_options is defined else {} %}
+  <select class="form-select{% if error %} is-invalid{% endif %}" id="{{ id }}" name="faculty"
+          data-department-select="{{ department_id }}" data-qualification-options="{{ options|tojson|forceescape }}"
+          {% if described_by %}aria-describedby="{{ described_by }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}>
+    <option value="">Select a faculty</option>
+    {% if allow_all %}
+    <option value="All faculties"{% if faculty == 'All faculties' %} selected{% endif %}>All faculties</option>
+    {% endif %}
+    {% for name in options %}
+    <option value="{{ name|e }}"{% if name == faculty %} selected{% endif %}>{{ name|e }}</option>
+    {% endfor %}
+    {% if faculty and faculty not in options and not (allow_all and faculty == 'All faculties') %}
+    <option value="{{ faculty|e }}" selected data-saved-option>{{ faculty|e }}</option>
+    {% endif %}
+  </select>
+{% endmacro %}
+
+{% macro department_select(id, faculty='', department='', error=false, described_by='') %}
+  <select class="form-select{% if error %} is-invalid{% endif %}" id="{{ id }}" name="department"
+          {% if not faculty or faculty == 'All faculties' %}disabled{% endif %}
+          {% if described_by %}aria-describedby="{{ described_by }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}>
+    <option value="">Select a department</option>
+    {% if department %}
+    <option value="{{ department|e }}" selected>{{ department|e }}</option>
+    {% endif %}
+  </select>
+{% endmacro %}

@@ -112,6 +112,27 @@ def test_dashboard_shows_own_listings_with_statuses(client):
     assert "Rejected" in page.text
 
 
+def test_dashboard_combines_keyword_type_and_status_filters(client):
+    author_id = _user_id(ALUMNI_EMAIL)
+    _add_listing(author_id, title="Research workshop", kind="event", status="published")
+    _add_listing(author_id, title="Research vacancy", kind="job", status="published")
+    _add_listing(author_id, title="Research seminar", kind="event", status="pending")
+    _add_listing(_user_id(ADMIN_EMAIL, "admin-dev"), title="Research fair", kind="event", status="published")
+    client = _login(client, ALUMNI_EMAIL)
+    filters = {"q": "RESEARCH", "kind": "event", "listing_status": "published"}
+
+    page = client.get("/app/dashboard", params=filters)
+
+    assert page.status_code == 200
+    assert "Research workshop" in page.text
+    for title in ("Research vacancy", "Research seminar", "Research fair"):
+        assert title not in page.text
+    assert 'value="event" selected' in page.text
+    assert 'value="published" selected' in page.text
+    empty = client.get("/app/dashboard", params={**filters, "q": "no matching title"})
+    assert "No submissions match your search." in empty.text
+
+
 def test_dashboard_hides_other_users_listings(client):
     admin_id = _user_id(ADMIN_EMAIL, "admin-dev")
     with Session(engine) as session:

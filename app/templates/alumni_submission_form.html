@@ -72,23 +72,26 @@
             <div class="invalid-feedback d-block">{{ form_error }}</div>
             {% endif %}
           </div>
-          <div class="col-12 col-md-6">
+          <div class="col-12">
             <label class="form-label" for="jobDeadline">Application deadline <span class="text-body-secondary">(optional)</span></label>
             <input class="form-control{% if form_error and 'application_deadline' in form_error %} is-invalid{% endif %}" type="date" id="jobDeadline" name="application_deadline" value="{{ form_data.get('application_deadline', '') }}" />
             {% if form_error and 'application_deadline' in form_error %}
             <div class="invalid-feedback d-block">{{ form_error }}</div>
             {% endif %}
           </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="jobFaculty">Faculty <span class="text-body-secondary">(faculty or department required)</span></label>
-            <input class="form-control{% if form_error and 'faculty' in form_error %} is-invalid{% endif %}" id="jobFaculty" name="faculty" value="{{ form_data.get('faculty', '') }}" />
+          <div class="col-12">
+            <div id="jobQualificationHelp" class="form-text mt-0">Faculty or department required.</div>
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="jobFaculty">Faculty</label>
+            {{ faculty_select('jobFaculty', 'jobDepartment', form_data.get('faculty', ''), error=form_error and 'faculty' in form_error, described_by='jobQualificationHelp', allow_all=true) }}
             {% if form_error and 'faculty' in form_error %}
             <div class="invalid-feedback d-block">{{ form_error }}</div>
             {% endif %}
           </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="jobDepartment">Department <span class="text-body-secondary">(faculty or department required)</span></label>
-            <input class="form-control{% if form_error and 'department' in form_error %} is-invalid{% endif %}" id="jobDepartment" name="department" value="{{ form_data.get('department', '') }}" />
+          <div class="col-6">
+            <label class="form-label" for="jobDepartment">Department</label>
+            {{ department_select('jobDepartment', form_data.get('faculty', ''), form_data.get('department', ''), form_error and 'department' in form_error, 'jobQualificationHelp') }}
             {% if form_error and 'department' in form_error %}
             <div class="invalid-feedback d-block">{{ form_error }}</div>
             {% endif %}
@@ -157,3 +160,4 @@
 })();
 </script>
 {% endblock %}
+{% from 'partials/qualification_fields.html' import faculty_select, department_select %}

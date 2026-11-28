@@ -52,18 +52,14 @@
       </div>
       <div class="mb-3">
         <label class="form-label" for="faculty">Faculty</label>
-        <input class="form-control{% if errors.get('faculty') %} is-invalid{% endif %}" type="text" id="faculty" name="faculty"
-               value="{{ (values.get('faculty') or '')|e }}"
-               aria-describedby="faculty-error"{% if errors.get('faculty') %} aria-invalid="true"{% endif %}>
+        {{ faculty_select('faculty', 'department', values.get('faculty', ''), error=errors.get('faculty'), described_by='faculty-error') }}
         <div class="invalid-feedback{% if errors.get('faculty') %} d-block{% endif %}" id="faculty-error">{{ errors.get('faculty', '')|e }}</div>
       </div>
       <div class="mb-3">
         <label class="form-label" for="department">Department</label>
-        <input class="form-control{% if errors.get('department') %} is-invalid{% endif %}" type="text" id="department" name="department"
-               value="{{ (values.get('department') or '')|e }}"
-               aria-describedby="department-error department-help"{% if errors.get('department') %} aria-invalid="true"{% endif %}>
+        {{ department_select('department', values.get('faculty', ''), values.get('department', ''), errors.get('department'), 'department-error department-help') }}
         <div class="invalid-feedback{% if errors.get('department') %} d-block{% endif %}" id="department-error">{{ errors.get('department', '')|e }}</div>
-        <div class="form-text" id="department-help">Provide a faculty or department.</div>
+        <div class="form-text" id="department-help">Select a faculty first. Department is optional.</div>
       </div>
       <div class="d-grid gap-2 mb-3">
         <button class="btn btn-primary btn-lg" type="submit">Register</button>
@@ -81,3 +77,4 @@
 {% block external_js %}
 <script src="{{ url_for('static', path='js/register.js') }}" defer></script>
 {% endblock %}
+{% from 'partials/qualification_fields.html' import faculty_select, department_select %}

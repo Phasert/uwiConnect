@@ -43,6 +43,8 @@ def qualifications_match(
 
     wanted_faculty = normalize_qualification(target_faculty)
     wanted_department = normalize_qualification(target_department)
+    if wanted_faculty == "all faculties":
+        return True
     if wanted_faculty is not None and faculty != wanted_faculty:
         return False
     return wanted_department is None or department == wanted_department
