@@ -428,7 +428,11 @@ data-listing="{{ {
 
   document.querySelectorAll('[data-delete-id]').forEach(function (button) {
     button.addEventListener('click', async function () {
-      if (!window.confirm('Request deletion of this listing? An admin must approve it before it is removed.')) {
+      if (!await confirmAction(
+        'Request listing deletion?',
+        'An admin must approve the request before the listing is removed.',
+        'Request deletion'
+      )) {
         return;
       }
       const url = '/api/boards/listings/' + button.dataset.deleteId + '/deletion-request';

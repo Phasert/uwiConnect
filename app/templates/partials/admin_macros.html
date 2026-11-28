@@ -25,16 +25,10 @@
 {% endif %}
 {% endmacro %}
 
-{% macro admin_action_script(confirm_delete=false, schedule=false) %}
+{% macro admin_action_script(schedule=false) %}
 <script>
 document.querySelectorAll('form[data-admin-action]').forEach(function (form) {
   form.addEventListener('submit', function (event) {
-    {% if confirm_delete %}
-    if (form.dataset.confirmDelete === 'true' && !window.confirm('Permanently delete this listing? This cannot be undone.')) {
-      event.preventDefault();
-      return;
-    }
-    {% endif %}
     {% if schedule %}
     const scheduleInput = form.querySelector('input[data-schedule-input]');
     const scheduledAt = form.querySelector('input[name="scheduled_at"]');
